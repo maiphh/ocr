@@ -1,0 +1,137 @@
+{
+  "documents": [
+    {
+      "file_path": "data/DischargeCertNewVer-page 1.pdf",
+      "extracted": {
+        "Họ và tên": "DANG DINH DAT",
+        "Ngày sinh": "1988-11-23",
+        "Mã BHXH/BHYT": "12034231",
+        "Loại yêu cầu": "N/A",
+        "Loại hệ thống": "N/A",
+        "Nhóm quyền lợi": null,
+        "CCCD/CMND": "033088008182",
+        "Ngày bắt đầu": "2025-07-28",
+        "Ngày kết thúc": "2025-07-29",
+        "Tổng số ngày": 1.0,
+        "Mã bệnh": "L02",
+        "Tên bệnh": "Nhiem trung ngon I chan",
+        "Số serial": "BA2507280452",
+        "OCR Score": "N/A"
+      },
+      "confidence": 1.0,
+      "warnings": [],
+      "raw_preview": {
+        "first_1000_chars": "<doctag><text><loc_48><loc_30><loc_152><loc_37>SOY TETINH HUNGYEN</text>\n<text><loc_179><loc_30><loc_355><loc_37>CONGHOAXA HQI CHU NGHIAVIET NAM</text>\n<text><loc_366><loc_30><loc_395><loc_37>MS:02</text>\n<text><loc_221><loc_40><loc_326><loc_48>Doc lap - Ty do - Hanh Phuc</text>\n<text><loc_367><loc_40><loc_476><loc_47>Sohoso/S6BA:BA2507280452</text>\n<text><loc_48><loc_50><loc_206><loc_58>Khoa Chan Thuong Chinh Hinh vaBong</text>\n<text><loc_367><loc_50><loc_443><loc_57>So:107/515/25/016421</text>\n<section_header_level_1><loc_207><loc_69><loc_316><loc_82>GIAY RA VIEN</section_header_level_1>\n<unordered_list><list_item><loc_48><loc_86><loc_220><loc_93>Ho ten nguoi benh: DANG DINH DAT</list_item>\n</unordered_list>\n<unordered_list><list_item><loc_49><loc_99><loc_197><loc_106>Ngay/thang/nam sinh: 23/11/1988</list_item>\n</unordered_list>\n<text><loc_271><loc_97><loc_331><loc_105>Tu6i: 37 Tu6i</text>\n<text><loc_382><loc_98><loc_445><loc_105>Nam/Ntr:Nam</text>\n<unordered_list><list_item><loc_48>",
+        "pages_detected": 0
+      }
+    },
+    {
+      "file_path": "data/Absence-cert-BHXH-NewVer 5.pdf",
+      "extracted": {
+        "Họ và tên": "TRAN VAN HAI",
+        "Ngày sinh": "1980-03-30",
+        "Mã BHXH/BHYT": "DN4757508110820",
+        "Loại yêu cầu": "N/A",
+        "Loại hệ thống": "N/A",
+        "Nhóm quyền lợi": "N/A",
+        "CCCD/CMND": "075080013378",
+        "Ngày bắt đầu": "2025-09-15",
+        "Ngày kết thúc": "2025-09-15",
+        "Tổng số ngày": 1.0,
+        "Mã bệnh": "M77.1",
+        "Tên bệnh": "Viem diem bam gan 10i cau ngoai xuong canh tay 2 ben;Hoi churng ong co tay",
+        "Số serial": "7520270933",
+        "OCR Score": "N/A"
+      },
+      "confidence": 1.0,
+      "warnings": [],
+      "raw_preview": {
+        "first_1000_chars": "<doctag><text><loc_18><loc_13><loc_226><loc_22>PhongKhamDaKhoaAnPhucSai Gon</text>\n<text><loc_18><loc_23><loc_108><loc_35>Mau so : CT07</text>\n<text><loc_19><loc_37><loc_145><loc_48>S6 : 25152691 / KCB</text>\n<text><loc_20><loc_50><loc_144><loc_61>So seri : 7520270933</text>\n<text><loc_286><loc_10><loc_395><loc_17>g7000159</text>\n<section_header_level_1><loc_107><loc_61><loc_378><loc_84>GIAY CHUNG NHAN NGHI VIEC HUONG BAO HIEM XA HQI</section_header_level_1>\n<text><loc_142><loc_86><loc_343><loc_96>(chi ap dung cho diéu tri ngoai tru)</text>\n<section_header_level_1><loc_10><loc_103><loc_158><loc_113>I. Thong tin nguoi benh</section_header_level_1>\n<text><loc_10><loc_117><loc_184><loc_127>Ho va ten : TRAN VAN HAI</text>\n<text><loc_328><loc_117><loc_465><loc_126>Ngay sinh : 30/03/1980</text>\n<text><loc_10><loc_132><loc_300><loc_143>Ma s6 BHXH/S6 thé BHYT : DN4757508110820</text>\n<text><loc_10><loc_146><loc_432><loc_158>S6 CCCD/CMND/Dinh danh cong dan/Ho chiéu: 075080013378 Ngay cap: 10/08",
+        "pages_detected": 0
+      }
+    },
+    {
+      "file_path": "data/Absence-cert-BHXH-NewVer 4.pdf",
+      "extracted": {
+        "Họ và tên": "TRINH LE BAO LONG",
+        "Ngày sinh": "2000-06-28",
+        "Mã BHXH/BHYT": "7523968711",
+        "Loại yêu cầu": "N/A",
+        "Loại hệ thống": "N/A",
+        "Nhóm quyền lợi": null,
+        "CCCD/CMND": "075200011163",
+        "Ngày bắt đầu": "2025-09-13",
+        "Ngày kết thúc": "2025-09-13",
+        "Tổng số ngày": 0.0,
+        "Mã bệnh": "J00",
+        "Tên bệnh": "Viem mui hong.",
+        "Số serial": "7525004579",
+        "OCR Score": "N/A"
+      },
+      "confidence": 1.0,
+      "warnings": [],
+      "raw_preview": {
+        "first_1000_chars": "<doctag><page_header><loc_423><loc_13><loc_479><loc_23>Lien so2</page_header>\n<section_header_level_1><loc_12><loc_28><loc_267><loc_54>PhongKham Da Khoa Y Sai Gon(75267) S6:25013442/KCB</section_header_level_1>\n<text><loc_348><loc_28><loc_435><loc_40>Mau so: CT07</text>\n<text><loc_349><loc_44><loc_469><loc_56>So seri: 7525004579</text>\n<picture><loc_8><loc_60><loc_58><loc_115></picture>\n<picture><loc_9><loc_124><loc_75><loc_140></picture>\n<picture><loc_26><loc_379><loc_194><loc_427></picture>\n<section_header_level_1><loc_98><loc_73><loc_370><loc_97>GIAY CHUNG NHAN NGHIVIECHUONGBAOHIEMXAHOI</section_header_level_1>\n<text><loc_11><loc_92><loc_19><loc_99>N</text>\n<text><loc_132><loc_98><loc_335><loc_110>(chi ap dung cho dieu tri ngoai tru)</text>\n<text><loc_9><loc_101><loc_39><loc_110>AKHOA</text>\n<text><loc_43><loc_103><loc_49><loc_108>★</text>\n<text><loc_35><loc_125><loc_233><loc_137>Va ten:TRINH LE BAO LONG</text>\n<text><loc_335><loc_128><loc_473><loc_138>Ngay sinh:28/06/2000</text>\n<t",
+        "pages_detected": 0
+      }
+    },
+    {
+      "file_path": "data/Absence-cert-BHXH-NewVer 3.pdf",
+      "extracted": {
+        "Họ và tên": "NGUYEN DINH NGQC",
+        "Ngày sinh": "1999-02-24",
+        "Mã BHXH/BHYT": "7526744137",
+        "Loại yêu cầu": "N/A",
+        "Loại hệ thống": "N/A",
+        "Nhóm quyền lợi": null,
+        "CCCD/CMND": "068099002315",
+        "Ngày bắt đầu": "2025-09-03",
+        "Ngày kết thúc": "2025-09-12",
+        "Tổng số ngày": 10.0,
+        "Mã bệnh": "N/A",
+        "Tên bệnh": "N/A",
+        "Số serial": "N/A",
+        "OCR Score": "N/A"
+      },
+      "confidence": 1.0,
+      "warnings": [],
+      "raw_preview": {
+        "first_1000_chars": "<doctag><page_header><loc_432><loc_16><loc_480><loc_28>LIEN 2</page_header>\n<text><loc_33><loc_30><loc_171><loc_41>BENHVIENDONGNAI -2</text>\n<text><loc_33><loc_41><loc_177><loc_62>S6:TN.2509.0001315/KCB Soseri:754212537961</text>\n<text><loc_298><loc_34><loc_389><loc_47>Mau S6: CT07</text>\n<text><loc_382><loc_57><loc_454><loc_67>17 6000七G</text>\n<section_header_level_1><loc_185><loc_69><loc_326><loc_83>GIAY CHUNG NHAN</section_header_level_1>\n<section_header_level_1><loc_130><loc_82><loc_402><loc_96>NGHI VIEC HUONG BAO HIEM XA HOI</section_header_level_1>\n<text><loc_174><loc_96><loc_375><loc_108>(chi ap dung cho dieu tri ngoai tru)</text>\n<section_header_level_1><loc_31><loc_108><loc_178><loc_120>1. Thong tin nguoi benh</section_header_level_1>\n<text><loc_31><loc_122><loc_275><loc_134>Ho ten nguoi benh: NGUYEN DINH NGQC</text>\n<text><loc_355><loc_124><loc_477><loc_136>Ngay sinh: 24/02/1999</text>\n<text><loc_31><loc_135><loc_179><loc_146>Ma s6 BHXH: 7526744137</text>\n<text><loc_257><loc_",
+        "pages_detected": 0
+      }
+    },
+    {
+      "file_path": "data/Absence-cert-BHXH-NewVer 2.pdf",
+      "extracted": {
+        "Họ và tên": "TRAN THIEN AN",
+        "Ngày sinh": "1995-07-02",
+        "Mã BHXH/BHYT": "DN4757514C94008",
+        "Loại yêu cầu": null,
+        "Loại hệ thống": null,
+        "Nhóm quyền lợi": null,
+        "CCCD/CMND": "075095024357",
+        "Ngày bắt đầu": "2025-09-16",
+        "Ngày kết thúc": "2025-09-16",
+        "Tổng số ngày": 1.0,
+        "Mã bệnh": "J02;J30",
+        "Tên bệnh": "Vie hong cap;Viem mui van mach va viem mui di rng",
+        "Số serial": "25.75187012041",
+        "OCR Score": null
+      },
+      "confidence": 1.0,
+      "warnings": [],
+      "raw_preview": {
+        "first_1000_chars": "<doctag><text><loc_35><loc_30><loc_92><loc_41>Lien s6 2</text>\n<text><loc_36><loc_43><loc_315><loc_53>PHONG KHAM DA KHOA HOANG ANH DUC</text>\n<text><loc_37><loc_55><loc_122><loc_66>Mau so: CT07</text>\n<text><loc_37><loc_69><loc_168><loc_79>S6:202208200016/KCB</text>\n<text><loc_38><loc_81><loc_183><loc_90>S6 Seri: 25.75187012041</text>\n<picture><loc_351><loc_26><loc_468><loc_52></picture>\n<section_header_level_1><loc_139><loc_103><loc_412><loc_138>GIAY CHUNG NHAN NGHI VIEC HU NG BAO HIEM XA HQI (chi ap dung cho dieu tri ngoai.tru)</section_header_level_1>\n<section_header_level_1><loc_31><loc_144><loc_154><loc_152>I. Thong tin nguoi benh:</section_header_level_1>\n<unordered_list><list_item><loc_31><loc_155><loc_190><loc_163>-Ho va ten:TRAN THIEN AN</list_item>\n</unordered_list>\n<text><loc_344><loc_155><loc_461><loc_163>Ngay sinh:02/07/1995</text>\n<unordered_list><list_item><loc_31><loc_166><loc_276><loc_175>-Ma so BHXH/S6 the BHYT: DN4757514C94008</list_item>\n</unordered_list>\n<unordered",
+        "pages_detected": 0
+      }
+    }
+  ],
+  "meta": {
+    "language": "en",
+    "schema_version": "v1",
+    "parsing_strategy": "few-shot",
+    "total_files": 5,
+    "csv_output": "result.csv",
+    "notes": []
+  }
+}
