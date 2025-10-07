@@ -15,11 +15,22 @@ from config import BHXH_SCHEMA
 import pandas as pd
 from io import BytesIO
 import copy
+import subprocess
+
+# Check for PDF preview availability
+PDF_PREVIEW_AVAILABLE = False
+PDF_PREVIEW_ERROR = None
+
 try:
     from pdf2image import convert_from_bytes
-    PDF_PREVIEW_AVAILABLE = True
+    # Verify poppler is actually available
+    try:
+        subprocess.run(["pdftoppm", "-v"], capture_output=True, check=True)
+        PDF_PREVIEW_AVAILABLE = True
+    except (subprocess.CalledProcessError, FileNotFoundError):
+        PDF_PREVIEW_ERROR = "poppler-utils not found. For deployment, add 'poppler-utils' to packages.txt file."
 except ImportError:
-    PDF_PREVIEW_AVAILABLE = False
+    PDF_PREVIEW_ERROR = "pdf2image not installed. Add 'pdf2image' to requirements.txt"
 
 
 # Set page configuration
@@ -650,11 +661,17 @@ def document_processing_tab():
                                         st.image(page_images[0], use_container_width=True, caption=f"Page {page_num}")
                         except Exception as e:
                             st.error(f"Error rendering PDF: {str(e)}")
-                            st.info("💡 Install pdf2image: `pip install pdf2image`")
+                            if PDF_PREVIEW_ERROR:
+                                st.warning(f"⚠️ {PDF_PREVIEW_ERROR}")
+                            else:
+                                st.info("💡 For local: `pip install pdf2image` and `brew install poppler`")
+                            st.info("📦 For deployment: Add 'poppler-utils' to packages.txt file")
                     else:
                         st.warning("📦 PDF preview not available")
-                        st.info("Install pdf2image for preview:\n```\npip install pdf2image\n```")
-                        st.caption("Note: pdf2image also requires poppler to be installed on your system.")
+                        if PDF_PREVIEW_ERROR:
+                            st.warning(f"⚠️ {PDF_PREVIEW_ERROR}")
+                        st.info("**For local development:**\n```bash\npip install pdf2image\nbrew install poppler  # macOS\n```")
+                        st.info("**For deployment (Streamlit Cloud):**\nCreate `packages.txt` with: `poppler-utils`")
                 else:
                     st.info("File data not available for preview")
             else:
