@@ -15,6 +15,11 @@ from config import BHXH_SCHEMA
 import pandas as pd
 from io import BytesIO
 import copy
+try:
+    from pdf2image import convert_from_bytes
+    PDF_PREVIEW_AVAILABLE = True
+except ImportError:
+    PDF_PREVIEW_AVAILABLE = False
 
 
 # Set page configuration
@@ -39,11 +44,9 @@ def get_current_schema():
 def reset_schema():
     """Reset schema to default"""
     st.session_state.custom_schema = copy.deepcopy(DEFAULT_SCHEMA)
-    # Re-initialize pipeline with default schema
-    st.session_state.pipeline = OCRParsingPipeline(
-        schema=st.session_state.custom_schema,
-        language_pref="en"
-    )
+    # Update pipeline schema without reinitializing
+    if 'pipeline' in st.session_state:
+        st.session_state.pipeline.set_schema(st.session_state.custom_schema)
 
 
 @st.cache_resource
@@ -51,6 +54,8 @@ def initialize_pipeline(_schema):
     """Initialize the OCR pipeline (cached to avoid re-initialization)"""
     return OCRParsingPipeline(
         schema=_schema,
+        ocr_engine="easyocr",
+        langs=["en", "vi"],
         language_pref="en"
     )
 
@@ -199,11 +204,8 @@ def schema_editor_page():
                         st.session_state.custom_schema = new_schema
                         st.session_state.json_editor_text = json.dumps(new_schema, indent=2, ensure_ascii=False)
                         
-                        # Re-initialize pipeline
-                        st.session_state.pipeline = OCRParsingPipeline(
-                            schema=new_schema,
-                            language_pref="en"
-                        )
+                        # Update pipeline schema without reinitializing
+                        st.session_state.pipeline.set_schema(new_schema)
                         st.success("✅ Schema applied successfully!")
                         st.rerun()
                         
@@ -260,11 +262,8 @@ def schema_editor_page():
                             st.session_state.custom_schema = current_schema
                             # Update JSON editor text
                             st.session_state.json_editor_text = json.dumps(current_schema, indent=2, ensure_ascii=False)
-                            # Re-initialize pipeline
-                            st.session_state.pipeline = OCRParsingPipeline(
-                                schema=current_schema,
-                                language_pref="en"
-                            )
+                            # Update pipeline schema without reinitializing
+                            st.session_state.pipeline.set_schema(current_schema)
                             st.session_state.show_add_field = False
                             st.success(f"Added field: {new_field_name}")
                             st.rerun()
@@ -301,11 +300,8 @@ def schema_editor_page():
             st.session_state.custom_schema = current_schema
             # Update JSON editor text
             st.session_state.json_editor_text = json.dumps(current_schema, indent=2, ensure_ascii=False)
-            # Re-initialize pipeline
-            st.session_state.pipeline = OCRParsingPipeline(
-                schema=current_schema,
-                language_pref="en"
-            )
+            # Update pipeline schema without reinitializing
+            st.session_state.pipeline.set_schema(current_schema)
             st.success(f"Deleted {len(fields_to_delete)} field(s)")
             st.rerun()
     
@@ -344,11 +340,8 @@ def schema_editor_page():
             if st.button("✅ Apply Imported Schema", use_container_width=True, type="primary"):
                 st.session_state.custom_schema = imported_schema
                 st.session_state.json_editor_text = json.dumps(imported_schema, indent=2, ensure_ascii=False)
-                # Re-initialize pipeline
-                st.session_state.pipeline = OCRParsingPipeline(
-                    schema=imported_schema,
-                    language_pref="en"
-                )
+                # Update pipeline schema without reinitializing
+                st.session_state.pipeline.set_schema(imported_schema)
                 st.success("Schema imported!")
                 st.rerun()
         except Exception as e:
@@ -387,20 +380,43 @@ def document_processing_tab():
     col1, col2 = st.columns(2)
     
     with col1:
+        # Get current engine from pipeline, or use default
+        current_engine = st.session_state.pipeline.ocr_engine if 'pipeline' in st.session_state else "rapidocr"
+        
         ocr_engine = st.selectbox(
             "OCR Engine",
-            ["rapidocr", "tesseract"],
-            index=0,
-            help="Select the OCR engine to use for text extraction"
+            ["rapidocr", "tesseract", "easyocr"],
+            index=["rapidocr", "tesseract", "easyocr"].index(current_engine) if current_engine in ["rapidocr", "tesseract", "easyocr"] else 0,
+            help="Select the OCR engine to use for text extraction",
+            key="ocr_engine_select"
         )
+        # Update pipeline OCR engine when changed
+        if 'pipeline' in st.session_state and ocr_engine != st.session_state.pipeline.ocr_engine:
+            st.session_state.pipeline.set_ocr_engine(ocr_engine)
     
     with col2:
-        ocr_languages = st.multiselect(
+        # Get current languages from pipeline, or use default
+        current_langs = st.session_state.pipeline.langs if 'pipeline' in st.session_state else ["en", "vi"]
+        current_langs_str = ",".join(current_langs)
+        
+        ocr_languages_input = st.text_input(
             "OCR Languages",
-            ["english", "vietnamese", "chinese", "japanese", "korean"],
-            default=["english", "vietnamese"],
-            help="Select languages for OCR processing"
+            value=current_langs_str,
+            help="Enter language codes separated by commas (e.g., en,vi,zh,ja,ko)",
+            key="ocr_languages_input",
+            placeholder="e.g., en,vi"
         )
+        
+        # Parse the input and update pipeline
+        if ocr_languages_input:
+            # Split by comma and strip whitespace
+            ocr_languages = [lang.strip() for lang in ocr_languages_input.split(",") if lang.strip()]
+            
+            # Update pipeline languages when changed
+            if 'pipeline' in st.session_state and ocr_languages != st.session_state.pipeline.langs:
+                st.session_state.pipeline.set_langs(ocr_languages)
+        else:
+            ocr_languages = ["en"]  # Default fallback
     
     # Process button
     process_button = st.button(
@@ -411,6 +427,11 @@ def document_processing_tab():
     )
     
     if process_button and uploaded_files:
+        # Store uploaded files in session state for preview
+        st.session_state.uploaded_files_data = {}
+        for uploaded_file in uploaded_files:
+            st.session_state.uploaded_files_data[uploaded_file.name] = uploaded_file.getvalue()
+        
         # Create temporary directory for uploaded files
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -472,12 +493,8 @@ def document_processing_tab():
                         # Update status
                         status_text.text(f"📄 Processing ({idx + 1}/{len(all_files)}): {file_name}")
                         
-                        # Process the document
-                        doc_result = st.session_state.pipeline.parse_document(
-                            str(file_path), 
-                            ocr_engine, 
-                            ocr_languages
-                        )
+                        # Process the document (no need to pass OCR params, using pipeline defaults)
+                        doc_result = st.session_state.pipeline.parse_document(str(file_path))
                         documents.append(doc_result)
                         
                         # Prepare CSV row
@@ -562,9 +579,86 @@ def document_processing_tab():
         with col3:
             st.metric("Files with Warnings", files_with_warnings)
         
-        # Display results table
+        # Display results table with row selection
         st.subheader("📊 Extracted Data")
-        st.dataframe(df, use_container_width=True)
+        
+        # Create two columns: table and preview
+        table_col, preview_col = st.columns([2, 1])
+        
+        with table_col:
+            # Add a radio button for row selection
+            st.caption("Click on a row number to preview the PDF")
+            
+            # Create selection column
+            df_with_index = df.copy()
+            df_with_index.insert(0, 'Select', range(len(df)))
+            
+            # Display dataframe with selection
+            event = st.dataframe(
+                df_with_index,
+                use_container_width=True,
+                on_select="rerun",
+                selection_mode="single-row"
+            )
+            
+        with preview_col:
+            st.subheader("🖼️ PDF Preview")
+            
+            # Check if a row is selected
+            if event and event.selection and event.selection.rows:
+                selected_row_idx = event.selection.rows[0]
+                
+                # Get the file path from the selected row
+                selected_file_path = df.iloc[selected_row_idx]['file_path']
+                file_name = Path(selected_file_path).name
+                
+                st.caption(f"**{file_name}**")
+                
+                # Check if we have the file data in session state
+                if 'uploaded_files_data' in st.session_state and file_name in st.session_state.uploaded_files_data:
+                    if PDF_PREVIEW_AVAILABLE:
+                        try:
+                            # Convert PDF to image
+                            pdf_bytes = st.session_state.uploaded_files_data[file_name]
+                            images = convert_from_bytes(pdf_bytes, first_page=1, last_page=1, dpi=150)
+                            
+                            if images:
+                                st.image(images[0], use_container_width=True, caption="Page 1")
+                            
+                            # Show page count
+                            total_pages = len(convert_from_bytes(pdf_bytes, dpi=72))
+                            if total_pages > 1:
+                                st.caption(f"📄 Total pages: {total_pages}")
+                                
+                                # Allow browsing other pages
+                                page_num = st.number_input(
+                                    "Go to page",
+                                    min_value=1,
+                                    max_value=total_pages,
+                                    value=1,
+                                    key=f"page_selector_{selected_row_idx}"
+                                )
+                                
+                                if page_num > 1:
+                                    page_images = convert_from_bytes(
+                                        pdf_bytes,
+                                        first_page=page_num,
+                                        last_page=page_num,
+                                        dpi=150
+                                    )
+                                    if page_images:
+                                        st.image(page_images[0], use_container_width=True, caption=f"Page {page_num}")
+                        except Exception as e:
+                            st.error(f"Error rendering PDF: {str(e)}")
+                            st.info("💡 Install pdf2image: `pip install pdf2image`")
+                    else:
+                        st.warning("📦 PDF preview not available")
+                        st.info("Install pdf2image for preview:\n```\npip install pdf2image\n```")
+                        st.caption("Note: pdf2image also requires poppler to be installed on your system.")
+                else:
+                    st.info("File data not available for preview")
+            else:
+                st.info("👆 Select a row to preview the PDF")
         
         # Download section
         st.subheader("💾 Download Results")

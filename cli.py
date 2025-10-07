@@ -38,7 +38,8 @@ def main():
     # Initialize pipeline with invoice schema
     pipeline = OCRParsingPipeline(
         schema=BHXH_SCHEMA,
-        language_pref="en"
+        langs=["en", "vi"],
+        ocr_engine="easyocr"
     )
     
     # Process all PDFs in data directory
@@ -46,10 +47,7 @@ def main():
     
     try:
         results = pipeline.process_directory(
-            "data",
-            ocr_engine="rapidocr",
-            ocr_lang=['english', 'vietnamese'],
-            file_filter="*.pdf"
+            "data"
         )
         
         print(f"\n✅ Processed {results['meta']['total_files']} file(s)")

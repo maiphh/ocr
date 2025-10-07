@@ -60,13 +60,16 @@ BHXH_SCHEMA = {
         "type": "string",
         "required": False,
         "nullable": True,
-        "description": "Disease code(s) from diagnosis. Multiple codes separated by semicolon ;"
+        "description": "Disease code(s) from diagnosis. Multiple codes separated by semicolon;"
     },
     "Tên bệnh": {
         "type": "string",
         "required": False,
         "nullable": True,
-        "description": "Disease name(s) from diagnosis. Multiple names separated by semicolon ;"
+        "description": """
+        Disease name(s) from diagnosis. Multiple names separated by semicolon; 
+        This field may have mistakes, misspelled, or noise since it is extracted from OCR text, fix and clean this field if there is a clear fix.
+        """
     },
     "Số serial": {
         "type": "string",

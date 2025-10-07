@@ -24,6 +24,8 @@ class OCRParsingPipeline:
     def __init__(
         self,
         schema: Dict[str, Any],
+        ocr_engine: str = "rapidocr",
+        langs: List[str] = None,
         language_pref: Optional[str] = None,
         schema_version: str = "v1",
         max_retries: int = 2,
@@ -34,16 +36,47 @@ class OCRParsingPipeline:
         
         Args:
             schema: JSON schema defining required fields and validation rules
+            ocr_engine: OCR engine to use (default: "rapidocr")
+            langs: List of OCR languages (default: ["en"])
             language_pref: Preferred language for responses (None = auto-detect)
             schema_version: Version of the schema being used
             max_retries: Maximum retry attempts for failed LLM parsing
             max_doctags_chars: Maximum characters to include in parsing prompt
         """
         self.schema = schema
+        self.ocr_engine = ocr_engine
+        self.langs = langs if langs is not None else ["en"]
         self.language_pref = language_pref
         self.schema_version = schema_version
         self.max_retries = max_retries
         self.max_doctags_chars = max_doctags_chars
+    
+    def set_ocr_engine(self, ocr_engine: str):
+        """
+        Update the OCR engine
+        
+        Args:
+            ocr_engine: New OCR engine to use
+        """
+        self.ocr_engine = ocr_engine
+    
+    def set_langs(self, langs: List[str]):
+        """
+        Update the OCR languages
+        
+        Args:
+            langs: New list of OCR languages
+        """
+        self.langs = langs
+    
+    def set_schema(self, schema: Dict[str, Any]):
+        """
+        Update the schema
+        
+        Args:
+            schema: New JSON schema defining required fields and validation rules
+        """
+        self.schema = schema
         
     def get_all_files(self, root: str) -> List[str]:
         """
@@ -320,22 +353,25 @@ class OCRParsingPipeline:
     def parse_document(
         self,
         file_path: str,
-        ocr_engine: str = "rapidocr",
-        ocr_lang: List[str] = None
+        ocr_engine: Optional[str] = None,
+        ocr_lang: Optional[List[str]] = None
     ) -> Dict[str, Any]:
         """
         Parse a single document through OCR and extraction
         
         Args:
             file_path: Path to document file
-            ocr_engine: OCR engine to use
-            ocr_lang: OCR languages
+            ocr_engine: OCR engine to use (default: use instance's ocr_engine)
+            ocr_lang: OCR languages (default: use instance's langs)
             
         Returns:
             Parsed document result
         """
+        # Use instance defaults if not provided
+        if ocr_engine is None:
+            ocr_engine = self.ocr_engine
         if ocr_lang is None:
-            ocr_lang = ['english']
+            ocr_lang = self.langs
         
         warnings = []
         raw_preview = {}
@@ -441,8 +477,8 @@ class OCRParsingPipeline:
     def process_directory(
         self,
         data_dir: str,
-        ocr_engine: str = "rapidocr",
-        ocr_lang: List[str] = None,
+        ocr_engine: Optional[str] = None,
+        ocr_lang: Optional[List[str]] = None,
         file_filter: Optional[str] = None,
         csv_output: str = "result.csv"
     ) -> Dict[str, Any]:
@@ -451,16 +487,19 @@ class OCRParsingPipeline:
         
         Args:
             data_dir: Directory containing files to process
-            ocr_engine: OCR engine to use
-            ocr_lang: OCR languages
+            ocr_engine: OCR engine to use (default: use instance's ocr_engine)
+            ocr_lang: OCR languages (default: use instance's langs)
             file_filter: Optional glob pattern to filter files (e.g., "*.pdf")
             csv_output: Path to CSV output file (default: "result.csv")
             
         Returns:
             Complete results with all documents
         """
+        # Use instance defaults if not provided
+        if ocr_engine is None:
+            ocr_engine = self.ocr_engine
         if ocr_lang is None:
-            ocr_lang = ['english']
+            ocr_lang = self.langs
         
         # Get all files
         all_files = self.get_all_files(data_dir)
