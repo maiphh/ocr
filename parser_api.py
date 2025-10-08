@@ -10,7 +10,7 @@ def chat_with_model(message:str):
         'Content-Type': 'application/json'
     }
     data = {
-      "model": "gpt-oss:20b",
+      "model": "gpt-oss:120b",
       "messages": [
         {
           "role": "user",

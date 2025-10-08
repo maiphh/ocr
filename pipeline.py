@@ -148,7 +148,6 @@ class OCRParsingPipeline:
         RULES:
         - Fill required fields; if a value is missing/unreadable, use "N/A".
         - Obey "type", "regex", "enum", and "format" constraints.
-        - For dates with format "iso-date", return in ISO 8601 format (YYYY-MM-DD).
         - For numbers, remove currency symbols and return numeric values only.
         - Return ONLY JSON, no extra text, no markdown code blocks, no comments.
         - Extract ONLY what's present in the text. Do NOT invent values.

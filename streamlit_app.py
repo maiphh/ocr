@@ -16,6 +16,7 @@ import pandas as pd
 from io import BytesIO
 import copy
 import subprocess
+from PyPDF2 import PdfReader, PdfWriter
 
 # Check for PDF preview availability
 PDF_PREVIEW_AVAILABLE = False
@@ -365,6 +366,48 @@ def schema_editor_page():
     st.caption(f"✅ Required: {required_count} | ⭕ Optional: {len(current_schema) - required_count}")
 
 
+def split_pdf_pages(pdf_path: Path, output_dir: Path) -> list[Path]:
+    """
+    Split a multi-page PDF into individual page PDFs.
+    
+    Args:
+        pdf_path: Path to the input PDF
+        output_dir: Directory to save split pages
+    
+    Returns:
+        List of paths to the split page PDFs
+    """
+    split_files = []
+    
+    try:
+        reader = PdfReader(pdf_path)
+        num_pages = len(reader.pages)
+        
+        # If only one page, return original file
+        if num_pages == 1:
+            return [pdf_path]
+        
+        # Split each page
+        base_name = pdf_path.stem
+        for page_num in range(num_pages):
+            writer = PdfWriter()
+            writer.add_page(reader.pages[page_num])
+            
+            # Create output filename: original_name_page_1.pdf, original_name_page_2.pdf, etc.
+            output_path = output_dir / f"{base_name}_page_{page_num + 1}.pdf"
+            
+            with open(output_path, 'wb') as output_file:
+                writer.write(output_file)
+            
+            split_files.append(output_path)
+        
+        return split_files
+    
+    except Exception as e:
+        st.warning(f"Error splitting {pdf_path.name}: {str(e)}. Processing as single file.")
+        return [pdf_path]
+
+
 def document_processing_tab():
     """Document processing interface"""
     
@@ -438,11 +481,6 @@ def document_processing_tab():
     )
     
     if process_button and uploaded_files:
-        # Store uploaded files in session state for preview
-        st.session_state.uploaded_files_data = {}
-        for uploaded_file in uploaded_files:
-            st.session_state.uploaded_files_data[uploaded_file.name] = uploaded_file.getvalue()
-        
         # Create temporary directory for uploaded files
         with tempfile.TemporaryDirectory() as temp_dir:
             temp_path = Path(temp_dir)
@@ -459,15 +497,37 @@ def document_processing_tab():
             
             st.success(f"✅ Saved {len(uploaded_files)} file(s)")
             
+            # Split multi-page PDFs
+            st.info("📄 Checking for multi-page PDFs...")
+            split_dir = temp_path / "split_pages"
+            split_dir.mkdir(exist_ok=True)
+            
+            all_pdf_files = list(temp_path.glob("*.pdf"))
+            files_to_process = []
+            
+            split_progress = st.progress(0)
+            for i, pdf_file in enumerate(all_pdf_files):
+                split_files = split_pdf_pages(pdf_file, split_dir)
+                files_to_process.extend(split_files)
+                split_progress.progress((i + 1) / len(all_pdf_files))
+            
+            split_progress.empty()
+            
+            if len(files_to_process) > len(all_pdf_files):
+                st.success(f"✅ Split into {len(files_to_process)} page(s) from {len(all_pdf_files)} file(s)")
+            
+            # Store split PDF data in session state for preview
+            st.session_state.uploaded_files_data = {}
+            for pdf_file in files_to_process:
+                with open(pdf_file, 'rb') as f:
+                    st.session_state.uploaded_files_data[pdf_file.name] = f.read()
+            
             # Process documents one by one with live updates
             st.info("🔄 Processing documents with OCR Pipeline...")
             
             try:
                 # Create a temporary CSV file
                 csv_output = temp_path / "results.csv"
-                
-                # Get all PDF files
-                all_files = [f for f in temp_path.glob("*.pdf")]
                 
                 # Get current schema
                 current_schema = get_current_schema()
@@ -498,13 +558,13 @@ def document_processing_tab():
                     writer.writeheader()
                     
                     # Process each file
-                    for idx, file_path in enumerate(all_files):
+                    for idx, file_path in enumerate(files_to_process):
                         file_name = file_path.name
                         
                         # Update status
-                        status_text.text(f"📄 Processing ({idx + 1}/{len(all_files)}): {file_name}")
+                        status_text.text(f"📄 Processing ({idx + 1}/{len(files_to_process)}): {file_name}")
                         
-                        # Process the document (no need to pass OCR params, using pipeline defaults)
+                        # Process the document
                         doc_result = st.session_state.pipeline.parse_document(str(file_path))
                         documents.append(doc_result)
                         
@@ -514,7 +574,7 @@ def document_processing_tab():
                             'confidence': doc_result['confidence'],
                             'warnings': '; '.join(doc_result['warnings']) if doc_result['warnings'] else ''
                         }
-                        # Add extracted fields - only those that exist in the schema/headers
+                        # Add extracted fields
                         for field in current_schema.keys():
                             csv_row[field] = doc_result['extracted'].get(field, '')
                         processed_data.append(csv_row)
@@ -524,14 +584,12 @@ def document_processing_tab():
                         csvfile.flush()
                         
                         # Update progress
-                        process_progress.progress((idx + 1) / len(all_files))
+                        process_progress.progress((idx + 1) / len(files_to_process))
                         
-                        # Update the SAME preview table
+                        # Update the preview table
                         with preview_placeholder.container():
-                            st.caption(f"✅ Processed {len(processed_data)}/{len(all_files)} document(s)")
-                            # Convert to DataFrame with all columns as strings
+                            st.caption(f"✅ Processed {len(processed_data)}/{len(files_to_process)} page(s)")
                             preview_df = pd.DataFrame(processed_data)
-                            # Ensure all columns are strings to prevent comma formatting
                             for col in preview_df.columns:
                                 preview_df[col] = preview_df[col].astype(str)
                             st.dataframe(preview_df, use_container_width=True)
@@ -555,12 +613,12 @@ def document_processing_tab():
                 }
                 
                 # Display results
-                st.success(f"✅ Successfully processed {results['meta']['total_files']} document(s)!")
+                st.success(f"✅ Successfully processed {results['meta']['total_files']} page(s)!")
                 
                 # Store results in session state
                 st.session_state.results = results
                 
-                # Read the CSV file with all columns as strings to prevent comma formatting
+                # Read the CSV file
                 st.session_state.df = pd.read_csv(csv_output, dtype=str)
                 
             except Exception as e:

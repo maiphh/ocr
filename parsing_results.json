@@ -5,21 +5,25 @@
       "extracted": {
         "Họ và tên": "ĐẶNG ĐÌNH ĐAT",
         "Ngày sinh": "1988-11-23",
-        "Mã BHXH/BHYT": "107/515/25/016421",
+        "Mã BHXH": "N/A",
+        "Mã BHYT": "N/A",
         "Loại yêu cầu": "N/A",
         "Loại hệ thống": "N/A",
         "Nhóm quyền lợi": null,
         "CCCD/CMND": "033088008182",
         "Ngày bắt đầu": "2025-07-28",
         "Ngày kết thúc": "2025-07-29",
-        "Tổng số ngày": 1.0,
+        "Tổng số ngày": 2.0,
         "Mã bệnh": "L02",
         "Tên bệnh": "Nhiễm Ichân (P) trùng ngón",
-        "Số serial": "BA2507280452",
-        "OCR Score": "N/A"
+        "Số serial": "107/515/25/016421",
+        "Ghi chú": "Uống thuốc theo đơn Nếu có bất thưòng khám lại ngay Nghỉ lao động từ 30/07/2025 - 06/08/2025"
       },
-      "confidence": 1.0,
-      "warnings": [],
+      "confidence": 0.8,
+      "warnings": [
+        "Mã BHXH: required field is missing or N/A",
+        "Mã BHYT: required field is missing or N/A"
+      ],
       "raw_preview": {
         "first_1000_chars": "<doctag><text><loc_47><loc_30><loc_153><loc_38>SỞ Y TẾ TỈNH HƯNG YÊN</text>\n<text><loc_178><loc_29><loc_356><loc_38>CỘNG HÒA XÃ HỘI CHỦ NGHĨA VIỆT NAM</text>\n<text><loc_367><loc_30><loc_395><loc_37>MS: 02</text>\n<text><loc_47><loc_40><loc_177><loc_48>BỆNH VIỆN ĐA KHOA PHỐ NỐI</text>\n<text><loc_221><loc_40><loc_326><loc_49>Độc Tự do Hanh Phúc lập</text>\n<text><loc_366><loc_39><loc_477><loc_47>Số hồ sơ/Số BA: BA2507280452</text>\n<text><loc_47><loc_49><loc_207><loc_60>Khoa Chấn Thương Chỉnh Hình và Bỏng</text>\n<text><loc_366><loc_50><loc_444><loc_57>Số: 107/515/25/016421</text>\n<section_header_level_1><loc_205><loc_68><loc_318><loc_83>GIẤY RA VIỆN</section_header_level_1>\n<unordered_list><list_item><loc_53><loc_84><loc_221><loc_94>Họ tên bệnh: ĐẶNG ĐÌNHĐAT người</list_item>\n</unordered_list>\n<unordered_list><list_item><loc_53><loc_98><loc_197><loc_108>Ngày/tháng/nẳm sinh: 23/11/1988</list_item>\n</unordered_list>\n<text><loc_270><loc_96><loc_331><loc_106>Tuổi: 37 Tuổi</text>\n<text><loc_382>",
         "pages_detected": 0
@@ -28,20 +32,21 @@
     {
       "file_path": "data/Absence-cert-BHXH-NewVer 5.pdf",
       "extracted": {
-        "Họ và tên": "TRẦN VĂN HẢI",
+        "Họ và tên": "TRÀN VĀN HÂI",
         "Ngày sinh": "1980-03-30",
-        "Mã BHXH/BHYT": "DN4757508110820",
+        "Mã BHXH": "7520270933",
+        "Mã BHYT": "4757508110",
         "Loại yêu cầu": "N/A",
         "Loại hệ thống": "N/A",
-        "Nhóm quyền lợi": null,
+        "Nhóm quyền lợi": "N/A",
         "CCCD/CMND": "075080013378",
         "Ngày bắt đầu": "2025-09-15",
         "Ngày kết thúc": "2025-09-15",
         "Tổng số ngày": 1.0,
-        "Mã bệnh": "N/A",
-        "Tên bệnh": "N/A",
+        "Mã bệnh": null,
+        "Tên bệnh": null,
         "Số serial": "7520270933",
-        "OCR Score": "N/A"
+        "Ghi chú": "N/A"
       },
       "confidence": 1.0,
       "warnings": [],
@@ -53,23 +58,27 @@
     {
       "file_path": "data/Absence-cert-BHXH-NewVer 4.pdf",
       "extracted": {
-        "Họ và tên": "TRỊNH LÊ BẢO LONG",
+        "Họ và tên": "N/A",
         "Ngày sinh": "2000-06-28",
-        "Mã BHXH/BHYT": "7523968711",
-        "Loại yêu cầu": "N/A",
+        "Mã BHXH": "7523968711",
+        "Mã BHYT": "N/A",
+        "Loại yêu cầu": null,
         "Loại hệ thống": "N/A",
         "Nhóm quyền lợi": null,
         "CCCD/CMND": "075200011163",
         "Ngày bắt đầu": "2025-09-13",
         "Ngày kết thúc": "2025-09-13",
-        "Tổng số ngày": 0.0,
-        "Mã bệnh": "JOO",
+        "Tổng số ngày": 1.0,
+        "Mã bệnh": "N/A",
         "Tên bệnh": "Viêm mũi họng",
         "Số serial": "7525004579",
-        "OCR Score": "N/A"
+        "Ghi chú": "N/A"
       },
-      "confidence": 1.0,
-      "warnings": [],
+      "confidence": 0.8,
+      "warnings": [
+        "Họ và tên: required field missing in extracted data",
+        "Mã BHYT: required field is missing or N/A"
+      ],
       "raw_preview": {
         "first_1000_chars": "<doctag><page_header><loc_422><loc_13><loc_479><loc_24>Liên số 2</page_header>\n<section_header_level_1><loc_9><loc_27><loc_270><loc_54>Phòng Khám Đa Khoa Y Sài Gòn (75267) Số: 25013442/KCB</section_header_level_1>\n<text><loc_347><loc_28><loc_436><loc_40>Mẫu số: CTO7</text>\n<text><loc_346><loc_43><loc_472><loc_56>Số seri: 7525004579</text>\n<picture><loc_8><loc_60><loc_58><loc_115></picture>\n<picture><loc_9><loc_124><loc_75><loc_140></picture>\n<picture><loc_26><loc_379><loc_194><loc_427></picture>\n<section_header_level_1><loc_96><loc_72><loc_372><loc_98>GIẤY CHỨNG NHẬN NGHỈ VIỆC HƯỞNG BẢO HIỂM XÃ HỘI</section_header_level_1>\n<text><loc_9><loc_81><loc_18><loc_89>Y</text>\n<text><loc_10><loc_91><loc_20><loc_99>N</text>\n<text><loc_10><loc_103><loc_16><loc_110>A</text>\n<text><loc_130><loc_97><loc_337><loc_112>(chỉ áp dụng cho điều trị ngoại trú)</text>\n<text><loc_41><loc_124><loc_234><loc_138>à tên: TRỊNH LÊ BẢO LONG</text>\n<text><loc_332><loc_127><loc_401><loc_141>Ngày sinh:</text>\n<text><lo",
         "pages_detected": 0
@@ -80,21 +89,25 @@
       "extracted": {
         "Họ và tên": "NGUYỄN ĐÌNH NGỌC",
         "Ngày sinh": "1999-02-24",
-        "Mã BHXH/BHYT": "7526744137",
+        "Mã BHXH": "7526744137",
+        "Mã BHYT": "7526744137",
         "Loại yêu cầu": "N/A",
         "Loại hệ thống": "N/A",
-        "Nhóm quyền lợi": "N/A",
+        "Nhóm quyền lợi": null,
         "CCCD/CMND": "068099002315",
         "Ngày bắt đầu": "2025-09-03",
-        "Ngày kết thúc": "2025-09-03",
-        "Tổng số ngày": 0.0,
+        "Ngày kết thúc": "N/A",
+        "Tổng số ngày": "N/A",
         "Mã bệnh": "N/A",
         "Tên bệnh": "N/A",
         "Số serial": "N/A",
-        "OCR Score": "N/A"
+        "Ghi chú": "N/A"
       },
-      "confidence": 1.0,
-      "warnings": [],
+      "confidence": 0.8,
+      "warnings": [
+        "Ngày kết thúc: required field is missing or N/A",
+        "Tổng số ngày: required field is missing or N/A"
+      ],
       "raw_preview": {
         "first_1000_chars": "<doctag><page_header><loc_431><loc_15><loc_481><loc_29>LIÊN 2</page_header>\n<text><loc_31><loc_31><loc_171><loc_52>BỆNH VIỆN ĐỎNG NAI -2 Số:TN.2509.0001315/KCB</text>\n<text><loc_296><loc_34><loc_391><loc_48>Mẫu Số: CT07</text>\n<section_header_level_1><loc_128><loc_69><loc_404><loc_96>GIÁY CHỨNG NHẬN NGHỈ VIỆC HƯỞNG BẢO HIỂM XÃ HỘI</section_header_level_1>\n<text><loc_173><loc_94><loc_378><loc_109>(chỉ áp dụng cho điều trị ngoại trú)</text>\n<section_header_level_1><loc_30><loc_106><loc_179><loc_121>I Thông tin bệnh người</section_header_level_1>\n<text><loc_48><loc_122><loc_277><loc_135>tên người bệnh: NGUYỄN ĐÌNH NGỌC</text>\n<text><loc_354><loc_125><loc_477><loc_136>Ngày sinh: 24/02/1999</text>\n<text><loc_31><loc_134><loc_179><loc_146>Mã số BHXH: 7526744137</text>\n<text><loc_258><loc_137><loc_297><loc_146>Mã thẻ</text>\n<text><loc_303><loc_137><loc_413><loc_148>DN4757526744137</text>\n<text><loc_29><loc_145><loc_463><loc_161>Số CCCDICMNDIĐịnh danh dân/HC: 068099002315 Ngày cấp:05/06/2024 c",
         "pages_detected": 0
@@ -105,8 +118,9 @@
       "extracted": {
         "Họ và tên": "TRẦN THIÊN ÂN",
         "Ngày sinh": "1995-07-02",
-        "Mã BHXH/BHYT": "DN475751464008",
-        "Loại yêu cầu": "N/A",
+        "Mã BHXH": "N/A",
+        "Mã BHYT": "4757514640",
+        "Loại yêu cầu": null,
         "Loại hệ thống": "N/A",
         "Nhóm quyền lợi": null,
         "CCCD/CMND": "075095024357",
@@ -116,10 +130,12 @@
         "Mã bệnh": "N/A",
         "Tên bệnh": "Viêm mũi vận mạch và viêm mũi dị ứng",
         "Số serial": "25.75187012041",
-        "OCR Score": "N/A"
+        "Ghi chú": "N/A"
       },
-      "confidence": 1.0,
-      "warnings": [],
+      "confidence": 0.9,
+      "warnings": [
+        "Mã BHXH: required field is missing or N/A"
+      ],
       "raw_preview": {
         "first_1000_chars": "<doctag><text><loc_35><loc_29><loc_91><loc_42>Liên số 2</text>\n<text><loc_35><loc_42><loc_318><loc_55>PHÒNG KHÁM ĐA KHOA HOÀNS ANH ĐỨC</text>\n<text><loc_35><loc_54><loc_122><loc_66>Mẫu số: CTO7</text>\n<text><loc_36><loc_68><loc_170><loc_79>Số: 202208200016/KCB</text>\n<text><loc_35><loc_79><loc_184><loc_91>Số Seri: 25.75187012041</text>\n<picture><loc_351><loc_26><loc_468><loc_52></picture>\n<section_header_level_1><loc_136><loc_102><loc_414><loc_141>GIẤY CHỨNG NHẬN NGHỈ VIỆC HƯ ỞNG BẢO HỈỂM XÃ HỘI (chỉ áp dụng cho điều trị ngoại trú)</section_header_level_1>\n<section_header_level_1><loc_40><loc_142><loc_155><loc_154>Thông tin người bệnh:</section_header_level_1>\n<unordered_list><list_item><loc_37><loc_153><loc_191><loc_164>Họ và tên: TRẦN THIÊN ÂN</list_item>\n</unordered_list>\n<text><loc_344><loc_154><loc_397><loc_165>Ngày sinh:</text>\n<text><loc_407><loc_154><loc_461><loc_163>02/07/1995</text>\n<unordered_list><list_item><loc_38><loc_165><loc_278><loc_176>Mã số BHXHISố thẻ BHYT: DN475751",
         "pages_detected": 0

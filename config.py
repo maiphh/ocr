@@ -21,8 +21,8 @@ BHXH_SCHEMA = {
     "Mã BHYT": {
         "type": "string",
         "required": True,
-        "description": "BHYT ID number (extract number after BHYT phrase).Start with DN + 13 digits, e.g. DN1234567890123. We only take the last 10 number: 7890123",
-        "example": "7890123"
+        "description": "BHYT ID number. Appear after phrase like: BHYT, Mã thẻ, Thẻ, ... .Start with 2 letters + digits, e.g. DN123456789012342. We only take 10 digits from 4 -> 4 number: 4567890123",
+        "example": "4567890123"
     },
 
     "Loại yêu cầu": {
@@ -73,18 +73,22 @@ BHXH_SCHEMA = {
         "required": False,
         "nullable": True,
         "description": "Disease code(s) from diagnosis. Multiple codes separated by semicolon;",
-        "example": "A00;B00.1"
+        "format": "letter + digits (e.g. A00;B00.1;S92.4). The first character is always a letter, if it is a digit like 0, it is likely a OCR error, fix it to O",
+        "example": "A00;B00.1;S92.4; O54; O84.1"
         
     },
     "Tên bệnh": {
         "type": "string",
         "required": False,
         "nullable": True,
+        "important": True,
         "description": """
-        Disease name(s) from diagnosis. Multiple names separated by semicolon; 
+        Disease name(s) from diagnosis. Multiple names separated by semicolon (;). Take any information that relavent to disease/diagnosis. This is a important field so try harder to get information about this field.
+        This information may appear after phrase like: Chẩn đoán, Chuẩn đoán, Kết luận, Bệnh, or similar phrases.
+
         This field may have mistakes, misspelled, or noise since it is extracted from OCR text, fix and clean this field if there is a clear fix.
         """,
-        "example": "Sốt xuất huyết;Cúm A"
+        "example": "Sốt xuất huyết;Cúm A; Nhiễm trùng đường ruột, xác định khác"
     },
     "Số serial": {
         "type": "string",
@@ -97,8 +101,8 @@ BHXH_SCHEMA = {
         "type": "string",
         "required": False,
         "nullable": True,
-        "description": "Notes, place to put any additional information or remarks. Usually after phrases like: Ghi chú, Lưu ý, Note, Remarks, Additional information,...",
-        "example": "Nghỉ 3 ngày từ ngày 01/01/2023 đến 03/01/2023"
+        "description": "Notes, place to put any additional information or remarks. This is a open field, take any information that add context to the case. For example: information about patient Dad, Mom, address, workplace, position, relationship with patient, contact phone, contact email, ...",
+        "example": "Nghỉ 3 ngày từ ngày 01/01/2023 đến 03/01/2023, Họ tên Cha, Họ tên Mẹ, Địa chỉ, Đơn vị công tác, Chức vụ, Quan hệ với người bệnh, Số điện thoại liên hệ, Email liên hệ, ..."
     }
 
 }
