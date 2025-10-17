@@ -1,6 +1,11 @@
 import requests
 from dotenv import load_dotenv
 import os
+from pydantic import BaseModel
+
+class Test(BaseModel):
+    message: str
+    test: str
 
 load_dotenv()
 def chat_with_model(message:str):
@@ -16,7 +21,13 @@ def chat_with_model(message:str):
           "role": "user",
           "content": message
         }
-      ]
+      ],
+      "reasoning": { "effort": "low" },
+
+      "temperature": 0.1,
+      "top_p": 0.1,
+      "stream": False,
+      
     }
     response = requests.post(url, headers=headers, json=data)
     return response.json()['choices'][0]['message']['content']
