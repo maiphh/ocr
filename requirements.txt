@@ -7,3 +7,7 @@ requests==2.32.5
 openpyxl==3.1.5
 pdf2image==1.17.0  # For PDF preview in UI
 PyPDF2==3.0.1  # For PDF splitting and manipulation
+fastapi==0.115.4
+uvicorn[standard]==0.30.6
+jinja2==3.1.4
+python-multipart==0.0.9

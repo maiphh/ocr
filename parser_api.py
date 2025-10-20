@@ -1,11 +1,6 @@
 import requests
 from dotenv import load_dotenv
 import os
-from pydantic import BaseModel
-
-class Test(BaseModel):
-    message: str
-    test: str
 
 load_dotenv()
 def chat_with_model(message:str):
