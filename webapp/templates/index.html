@@ -47,6 +47,17 @@
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+    <style>
+        .brand-logo {
+            filter: brightness(0) invert(1);
+        }
+        #results-table thead th {
+            position: sticky;
+            top: 0;
+            z-index: 20;
+            background-color: #f8fafc;
+        }
+    </style>
     <script defer src="/static/js/app.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-900 font-body">
@@ -56,12 +67,10 @@
         <div class="relative z-10 px-6 py-10 sm:py-16 lg:px-12 max-w-[90%] mx-auto">
             <div class="flex flex-col gap-10 lg:flex-row lg:items-center lg:justify-between">
                 <div>
-                    <div class="flex items-center gap-3 uppercase tracking-[0.35em] text-sm text-white/80 mb-6">
-                        <span class="h-2 w-2 rounded-full bg-white/80"></span>
-                        TalentVision Intelligence Studio
-                    </div>
+                    <img src="https://www.talentnetgroup.com/vn/wp-content/uploads/2024/08/Talentnet-Logo-01-1024x576.png" alt="Talentnet logo" class="brand-logo h-20 w-auto mb-8">
+                
                     <h1 class="font-display text-4xl sm:text-5xl lg:text-6xl text-white font-semibold leading-tight lg:max-w-xl">
-                        Elevate document intelligence with a Talentnet-inspired experience.
+                        Payroll OCR
                     </h1>
                     <p class="mt-6 text-lg text-white/80 max-w-2xl leading-relaxed">
                         Showcase OCR-powered journeys that feel at home with Talentnet Group’s polished aesthetic.
