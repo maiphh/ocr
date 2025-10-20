@@ -12,12 +12,6 @@
                     colors: {
                         primary: '#0B2A4A',
                         accent: '#F05A28',
-                        brand: {
-                            DEFAULT: '#F05A28',
-                            light: '#F97542',
-                            dark: '#B94828',
-                            darkest: '#9E3A1F'
-                        },
                         neutral: {
                             900: '#1D1D1F',
                             700: '#3A3A3C',

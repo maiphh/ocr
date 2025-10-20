@@ -11,10 +11,6 @@
     let selectedRowKey = null;
     let selectedPage = 1;
     let activePreviewUrl = null;
-    const pendingEdits = new Map();
-    const AUTO_SAVE_DELAY = 2000;
-    let autoSaveTimer = null;
-    let savePromise = null;
 
     const dom = {
         navButtons: document.querySelectorAll(".nav-btn"),
@@ -31,9 +27,6 @@
         summaryWarnings: document.getElementById("summary-warnings"),
         summaryProfile: document.getElementById("summary-profile"),
         downloadActions: document.getElementById("download-actions"),
-        downloadExcelBtn: document.getElementById("download-excel"),
-        downloadCsvBtn: document.getElementById("download-csv"),
-        downloadJsonBtn: document.getElementById("download-json"),
         saveEditsBtn: document.getElementById("save-edits"),
         resultsStatus: document.getElementById("results-status"),
         resultsHead: document.getElementById("results-head"),
@@ -92,48 +85,13 @@
         return String(error);
     };
 
-    const refreshSaveButtonState = () => {
-        if (!dom.saveEditsBtn) return;
-        if (state.hasEdits || pendingEdits.size > 0) {
-            dom.saveEditsBtn.classList.remove("hidden");
-            dom.saveEditsBtn.disabled = false;
-            dom.saveEditsBtn.textContent = "Save edits";
-        } else {
-            dom.saveEditsBtn.classList.add("hidden");
-        }
-    };
-
-    const scheduleAutoSave = () => {
-        if (autoSaveTimer) {
-            clearTimeout(autoSaveTimer);
-        }
-        autoSaveTimer = setTimeout(async () => {
-            autoSaveTimer = null;
-            if (!state.hasEdits) return;
-            try {
-                await saveEdits({ silent: true });
-            } catch (error) {
-                console.error("autosave failed", error);
-            }
-        }, AUTO_SAVE_DELAY);
-    };
-
     const markPendingEdits = () => {
         if (!dom.saveEditsBtn) return;
         state.hasEdits = true;
-        refreshSaveButtonState();
+        dom.saveEditsBtn.classList.remove("hidden");
+        dom.saveEditsBtn.disabled = false;
+        dom.saveEditsBtn.textContent = "Save edits";
         setBanner(dom.resultsStatus, "You have unsaved edits.", "warning");
-        scheduleAutoSave();
-    };
-
-    const recordPendingEdit = (fileKey, fieldName, value) => {
-        if (!fileKey || !fieldName) return;
-        let entry = pendingEdits.get(fileKey);
-        if (!entry) {
-            entry = {};
-            pendingEdits.set(fileKey, entry);
-        }
-        entry[fieldName] = value;
     };
 
     const handleCellEdit = (event) => {
@@ -154,7 +112,6 @@
         if (resultRow) {
             resultRow.fields[fieldName] = newValue;
         }
-        recordPendingEdit(fileKey, fieldName, newValue);
         markPendingEdits();
     };
 
@@ -241,26 +198,12 @@
     };
 
     const buildTable = (rows) => {
-        const normalizedRows = rows.map((row) => {
-            const overrides = pendingEdits.get(row.fileKey);
-            const mergedFields = { ...(row.fields || {}) };
-            if (overrides) {
-                Object.entries(overrides).forEach(([fieldName, value]) => {
-                    mergedFields[fieldName] = value;
-                });
-            }
-            return {
-                ...row,
-                fields: mergedFields,
-            };
-        });
-
-        state.results = normalizedRows;
+        state.results = rows;
         dom.resultsHead.innerHTML = "";
         dom.resultsBody.innerHTML = "";
         state.rowIndex.clear();
 
-        if (!normalizedRows.length) {
+        if (!rows.length) {
             const emptyRow = document.createElement("tr");
             emptyRow.className = "bg-white";
             const cell = document.createElement("td");
@@ -269,12 +212,11 @@
             cell.className = "px-4 py-3 text-sm text-slate-500";
             emptyRow.appendChild(cell);
             dom.resultsBody.appendChild(emptyRow);
-            refreshSaveButtonState();
             return;
         }
 
-        if (!state.schemaOrder.length && normalizedRows[0]?.fields) {
-            state.schemaOrder = Object.keys(normalizedRows[0].fields);
+        if (!state.schemaOrder.length && rows[0]?.fields) {
+            state.schemaOrder = Object.keys(rows[0].fields);
         }
 
         if (dom.tableZoom) {
@@ -302,7 +244,7 @@
         });
         dom.resultsHead.appendChild(headerRow);
 
-        normalizedRows.forEach((row, index) => {
+        rows.forEach((row, index) => {
             const tr = document.createElement("tr");
             tr.dataset.fileKey = row.fileKey;
             tr.className = "bg-white transition hover:bg-[#B94828]/5 cursor-pointer";
@@ -332,8 +274,6 @@
             dom.resultsBody.appendChild(tr);
             state.rowIndex.set(row.fileKey, row);
         });
-
-        refreshSaveButtonState();
     };
 
     const renderPreview = async (row, page = 1) => {
@@ -440,8 +380,7 @@
         dom.processBtn.disabled = true;
         dom.processBtn.textContent = "Processing…";
         state.hasEdits = false;
-        pendingEdits.clear();
-        refreshSaveButtonState();
+        dom.saveEditsBtn?.classList.add("hidden");
         clearPreview();
 
         let appendExisting = Array.isArray(state.results) && state.results.length > 0;
@@ -530,6 +469,8 @@
                     buildTable(payload.table);
                     dom.resultsRegion.classList.remove("hidden");
                     dom.downloadActions.classList.toggle("hidden", !payload.summary.totalFiles);
+                    state.hasEdits = false;
+                    dom.saveEditsBtn?.classList.add("hidden");
                     setBanner(dom.resultsStatus, "", "info");
 
                     if (latestRow) {
@@ -917,120 +858,51 @@ const updateField = async (fieldName, updatedConfig) => {
         }
     };
 
-    const saveEdits = async (options = {}) => {
-        const { silent = false } = options;
-        const hasPending = state.hasEdits || pendingEdits.size > 0;
-        if (!hasPending) {
-            if (!silent) {
-                setBanner(dom.resultsStatus, "No edits to save.", "info");
-            }
-            return state.results;
+    const saveEdits = async () => {
+        if (!state.hasEdits) {
+            setBanner(dom.resultsStatus, "No edits to save.", "info");
+            return;
         }
-        if (savePromise) {
-            return savePromise;
-        }
+        if (!dom.saveEditsBtn) return;
 
-        if (autoSaveTimer) {
-            clearTimeout(autoSaveTimer);
-            autoSaveTimer = null;
-        }
-
-        const button = dom.saveEditsBtn;
-        if (!silent && button) {
-            button.disabled = true;
-            button.textContent = "Saving…";
-            setBanner(dom.resultsStatus, "Saving your edits…", "info");
-        }
+        dom.saveEditsBtn.disabled = true;
+        dom.saveEditsBtn.textContent = "Saving…";
+        setBanner(dom.resultsStatus, "Saving your edits…", "info");
 
         const payload = {
             table: state.results,
         };
 
-        const pendingSnapshot = new Map();
-        pendingEdits.forEach((fields, fileKey) => {
-            pendingSnapshot.set(fileKey, { ...fields });
-        });
-
         const previousSelection = selectedRowKey;
 
-        const executeSave = async () => {
-            try {
-                const response = await fetch("/api/results/update", {
-                    method: "POST",
-                    headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify(payload),
-                });
-                if (!response.ok) {
-                    const detail = await response.json().catch(() => ({}));
-                    throw new Error(detail.detail || "Failed to save edits.");
-                }
-                const data = await response.json();
-                const updatedTable = data.table || [];
-                pendingSnapshot.forEach((fields, fileKey) => {
-                    const current = pendingEdits.get(fileKey);
-                    if (!current) {
-                        return;
-                    }
-                    Object.entries(fields).forEach(([fieldName, value]) => {
-                        if (current[fieldName] === value) {
-                            delete current[fieldName];
-                        }
-                    });
-                    if (Object.keys(current).length === 0) {
-                        pendingEdits.delete(fileKey);
-                    }
-                });
-                const hasRemaining = pendingEdits.size > 0;
-                state.hasEdits = hasRemaining;
-                buildTable(updatedTable);
-                if (button) {
-                    button.disabled = false;
-                    button.textContent = "Save edits";
-                }
-                if (!silent) {
-                    if (hasRemaining) {
-                        setBanner(dom.resultsStatus, "Some edits are still pending…", "warning");
-                    } else {
-                        setBanner(dom.resultsStatus, "Edits saved successfully.", "success");
-                    }
-                } else if (!hasRemaining) {
-                    setBanner(dom.resultsStatus, "", "info");
-                }
-                if (previousSelection && state.rowIndex.has(previousSelection)) {
-                    selectRow(previousSelection);
-                } else {
-                    clearPreview();
-                }
-                if (hasRemaining) {
-                    scheduleAutoSave();
-                }
-                return updatedTable;
-            } catch (error) {
-                const message = toMessage(error, "Unable to save edits.");
-                setBanner(dom.resultsStatus, message, "error");
-                if (button) {
-                    button.disabled = false;
-                    button.textContent = "Save edits";
-                }
-                throw error;
-            } finally {
-                savePromise = null;
-            }
-        };
-
-        savePromise = executeSave();
-        return savePromise;
-    };
-
-    const ensureEditsSaved = async () => {
-        if (!(state.hasEdits || pendingEdits.size > 0)) {
-            return state.results;
-        }
         try {
-            return await saveEdits({ silent: true });
+            const response = await fetch("/api/results/update", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify(payload),
+            });
+            if (!response.ok) {
+                const detail = await response.json().catch(() => ({}));
+                throw new Error(detail.detail || "Failed to save edits.");
+            }
+            const data = await response.json();
+            const updatedTable = data.table || [];
+            buildTable(updatedTable);
+            state.hasEdits = false;
+            dom.saveEditsBtn.classList.add("hidden");
+            dom.saveEditsBtn.disabled = false;
+            dom.saveEditsBtn.textContent = "Save edits";
+            setBanner(dom.resultsStatus, "Edits saved successfully.", "success");
+            if (previousSelection && state.rowIndex.has(previousSelection)) {
+                selectRow(previousSelection);
+            } else {
+                clearPreview();
+            }
         } catch (error) {
-            console.error("autosave failed", error);
-            throw error;
+            const message = toMessage(error, "Unable to save edits.");
+            setBanner(dom.resultsStatus, message, "error");
+            dom.saveEditsBtn.disabled = false;
+            dom.saveEditsBtn.textContent = "Save edits";
         }
     };
 
@@ -1160,40 +1032,7 @@ const updateField = async (fieldName, updatedConfig) => {
         dom.resetSchema.addEventListener("click", resetSchema);
         dom.exportSchema.addEventListener("click", exportSchema);
         dom.importSchema.addEventListener("change", importSchema);
-        dom.saveEditsBtn?.addEventListener("click", () => saveEdits());
-
-        const triggerDownload = (href) => {
-            const link = document.createElement("a");
-            link.href = href;
-            link.style.display = "none";
-            document.body.appendChild(link);
-            link.click();
-            document.body.removeChild(link);
-        };
-
-        const bindDownload = (element) => {
-            if (!element) return;
-            element.addEventListener("click", async (event) => {
-                const href = element.getAttribute("href");
-                if (!href) {
-                    return;
-                }
-                if (!state.results || !state.results.length) {
-                    return;
-                }
-                event.preventDefault();
-                try {
-                    await ensureEditsSaved();
-                    triggerDownload(href);
-                } catch (error) {
-                    // Error already surfaced via banner; do not trigger download.
-                }
-            });
-        };
-
-        bindDownload(dom.downloadExcelBtn);
-        bindDownload(dom.downloadCsvBtn);
-        bindDownload(dom.downloadJsonBtn);
+        dom.saveEditsBtn?.addEventListener("click", saveEdits);
     };
 
     const bootstrap = () => {
