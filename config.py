@@ -53,7 +53,6 @@ BHXH_SCHEMA = {
 
   "Tên bệnh": {
     "type": "string",
-    "important": true,
     "description": "Full disease name(s) and ICD code(s) from the diagnosis section (e.g. after 'Chẩn đoán', 'Kết luận'). Include all diseases and codes, separated by semicolons (;). Fix OCR errors if the intended text is clear.",
     "example": "Mắt trái: Chắp (H00.1); Bệnh khác của tuyến lệ (H04.1)"
   },
