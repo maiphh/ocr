@@ -78,11 +78,20 @@
         .resizable-column:hover .column-resize-handle::after {
             background-color: rgba(185, 72, 40, 0.6);
         }
+        #results-table-wrapper {
+            --table-scale: 1;
+        }
         #results-table thead th {
             position: sticky;
             top: 0;
             z-index: 20;
             background-color: #f8fafc;
+            font-size: calc(0.75rem * var(--table-scale));
+            padding: calc(0.75rem * var(--table-scale)) calc(1rem * var(--table-scale));
+        }
+        #results-table tbody td {
+            font-size: calc(0.875rem * var(--table-scale));
+            padding: calc(0.75rem * var(--table-scale)) calc(1rem * var(--table-scale));
         }
     </style>
     <script defer src="/static/js/app.js"></script>
@@ -262,7 +271,7 @@
                             <input id="table-zoom" type="range" min="80" max="120" value="100" class="w-32 accent-[#B94828]">
                         </div>
                         <div class="overflow-auto rounded-2xl bg-white" style="max-height: 65vh;">
-                            <div id="results-table-wrapper" class="origin-top-left" style="transform: scale(1); transform-origin: top left;">
+                            <div id="results-table-wrapper" class="origin-top-left">
                                 <table id="results-table" class="min-w-full divide-y divide-slate-200 text-sm">
                                     <thead id="results-head" class="sticky top-0 z-10 bg-slate-50 text-left text-xs font-semibold uppercase tracking-wide text-slate-500 shadow"></thead>
                                     <tbody id="results-body" class="divide-y divide-slate-100 bg-white"></tbody>

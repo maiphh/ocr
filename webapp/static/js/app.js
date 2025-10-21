@@ -572,7 +572,7 @@
         if (dom.tableZoom) {
             const scale = Number(dom.tableZoom.value || 100) / 100;
             if (dom.resultsTableWrapper) {
-                dom.resultsTableWrapper.style.transform = `scale(${scale})`;
+                dom.resultsTableWrapper.style.setProperty("--table-scale", scale);
             }
         }
 
@@ -667,6 +667,15 @@
             dom.resultsBody.appendChild(tr);
             state.rowIndex.set(row.fileKey, row);
         });
+
+        const currentSelection = selectedRowKey;
+        if (currentSelection) {
+            if (state.rowIndex.has(currentSelection)) {
+                selectRow(currentSelection);
+            } else {
+                clearPreview();
+            }
+        }
 
         setupColumnResizing();
         refreshSaveButtonState();
@@ -812,7 +821,6 @@
         state.hasEdits = false;
         pendingEdits.clear();
         refreshSaveButtonState();
-        clearPreview();
 
         let appendExisting = Array.isArray(state.results) && state.results.length > 0;
 
@@ -902,7 +910,10 @@
                     dom.downloadActions.classList.toggle("hidden", !payload.summary.totalFiles);
                     setBanner(dom.resultsStatus, "", "info");
 
-                    if (latestRow) {
+                    const hasExistingSelection =
+                        selectedRowKey !== null && state.rowIndex.has(selectedRowKey);
+
+                    if (latestRow && !hasExistingSelection) {
                         selectRow(latestRow.fileKey, { force: true });
                     }
 
@@ -1487,7 +1498,7 @@ const updateField = async (fieldName, updatedConfig) => {
         dom.tableZoom?.addEventListener("input", () => {
             const scale = Number(dom.tableZoom.value || 100) / 100;
             if (dom.resultsTableWrapper) {
-                dom.resultsTableWrapper.style.transform = `scale(${scale})`;
+                dom.resultsTableWrapper.style.setProperty("--table-scale", scale);
             }
         });
 
