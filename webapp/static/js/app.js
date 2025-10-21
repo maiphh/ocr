@@ -8,6 +8,161 @@
         hasEdits: false,
     };
 
+    const DEFAULT_COLUMN_CONFIG = {
+        baseColumns: {
+            index: false,
+            originalFile: false,
+            page: false,
+            fileName: false,
+            confidence: false,
+            warnings: false,
+        },
+        hiddenSchemaFields: [],
+    };
+
+    const RESIZE_GRAB_AREA = 14;
+
+    const normalizeBoolean = (value, fallback = true) => {
+        if (value === undefined) return fallback;
+        if (typeof value === "boolean") return value;
+        if (typeof value === "number") {
+            if (Number.isNaN(value)) return fallback;
+            return value !== 0;
+        }
+        if (typeof value === "string") {
+            const normalized = value.trim().toLowerCase();
+            if (!normalized) {
+                return fallback;
+            }
+            if (["false", "0", "off", "no", "n"].includes(normalized)) {
+                return false;
+            }
+            if (["true", "1", "on", "yes", "y"].includes(normalized)) {
+                return true;
+            }
+        }
+        return Boolean(value);
+    };
+
+    const mergeColumnConfig = (overrides = {}) => {
+        const baseColumns = {
+            ...DEFAULT_COLUMN_CONFIG.baseColumns,
+            ...(overrides.baseColumns || {}),
+        };
+
+        const rawHiddenFields =
+            overrides.hiddenSchemaFields ?? DEFAULT_COLUMN_CONFIG.hiddenSchemaFields;
+
+        const hiddenSchemaFields = Array.isArray(rawHiddenFields)
+            ? rawHiddenFields
+            : typeof rawHiddenFields === "string"
+            ? rawHiddenFields.split(",")
+            : DEFAULT_COLUMN_CONFIG.hiddenSchemaFields;
+
+        const normalizedHiddenFields = hiddenSchemaFields
+            .map((field) => String(field).trim())
+            .filter((field) => field.length > 0);
+
+        return {
+            baseColumns,
+            hiddenSchemaFields: normalizedHiddenFields,
+        };
+    };
+
+    const getWindowConfig = () =>
+        typeof window !== "undefined" ? window.ocrTableConfig || {} : {};
+
+    let tableColumnConfig = mergeColumnConfig(getWindowConfig());
+
+    const updateTableColumnConfig = (overrides = {}) => {
+        if (typeof window === "undefined") {
+            tableColumnConfig = mergeColumnConfig(overrides);
+            return;
+        }
+
+        const current = window.ocrTableConfig || {};
+        const merged = {
+            baseColumns: {
+                ...current.baseColumns,
+                ...(overrides.baseColumns || {}),
+            },
+            hiddenSchemaFields:
+                overrides.hiddenSchemaFields ?? current.hiddenSchemaFields,
+        };
+        window.ocrTableConfig = merged;
+        tableColumnConfig = mergeColumnConfig(window.ocrTableConfig);
+
+        if (Array.isArray(state.results)) {
+            columnWidths.clear();
+            buildTable(state.results);
+        }
+    };
+
+    if (typeof window !== "undefined") {
+        window.setOcrTableConfig = updateTableColumnConfig;
+        window.resetOcrTableConfig = () => {
+            window.ocrTableConfig = {};
+            tableColumnConfig = mergeColumnConfig();
+            columnWidths.clear();
+            if (Array.isArray(state.results)) {
+                buildTable(state.results);
+            }
+        };
+    }
+
+    const BASE_COLUMNS = [
+        {
+            key: "index",
+            label: "#",
+            headerClassName: "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500",
+            cellClassName: "px-4 py-3 font-semibold text-slate-700",
+            render: (_row, index) => String(index + 1),
+        },
+        {
+            key: "originalFile",
+            label: "Original File",
+            headerClassName: "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500",
+            cellClassName: "px-4 py-3 text-slate-700 break-words",
+            render: (row) => row.originalName || "—",
+        },
+        {
+            key: "page",
+            label: "Page",
+            headerClassName: "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500",
+            cellClassName: "px-4 py-3 text-slate-700",
+            render: (row) => row.pageLabel || `Page ${row.pageNumber ?? 1}`,
+        },
+        {
+            key: "fileName",
+            label: "File Name",
+            headerClassName: "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500",
+            cellClassName: "px-4 py-3 text-slate-700 break-words",
+            render: (row) => row.fileName || "—",
+        },
+        {
+            key: "confidence",
+            label: "Confidence",
+            headerClassName: "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500",
+            cellClassName: "px-4 py-3 text-slate-700",
+            render: (row) => row.confidenceDisplay ?? "—",
+        },
+        {
+            key: "warnings",
+            label: "Warnings",
+            headerClassName: "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500",
+            cellClassName: "px-4 py-3 text-slate-600",
+            render: (row) => (row.warnings?.length ? row.warnings.join(", ") : "—"),
+        },
+    ];
+
+    const columnWidths = new Map();
+    const MIN_COLUMN_WIDTH = 80;
+    let resizeState = null;
+
+    let activePreviewKey = null;
+    let activePreviewPage = 1;
+    let previewAbortController = null;
+
     let selectedRowKey = null;
     let selectedPage = 1;
     let activePreviewUrl = null;
@@ -90,6 +245,150 @@
             return fallback;
         }
         return String(error);
+    };
+
+    const applyWidthToColumn = (columnKey, width) => {
+        if (!Number.isFinite(width) || !dom.resultsHead) return;
+        const headerCell = dom.resultsHead.querySelector(
+            `[data-column-key="${columnKey}"]`,
+        );
+        if (!headerCell || !headerCell.parentElement) return;
+
+        const headerRow = headerCell.parentElement;
+        const columnIndex = Array.prototype.indexOf.call(
+            headerRow.children,
+            headerCell,
+        );
+        if (columnIndex === -1) return;
+        const px = `${width}px`;
+        headerCell.style.width = px;
+        headerCell.style.minWidth = px;
+
+        dom.resultsBody.querySelectorAll("tr").forEach((row) => {
+            const cell = row.children[columnIndex];
+            if (cell) {
+                cell.style.width = px;
+                cell.style.minWidth = px;
+            }
+        });
+    };
+
+    const onColumnResize = (event) => {
+        if (!resizeState) return;
+        const delta = event.pageX - resizeState.startX;
+        const width = Math.max(MIN_COLUMN_WIDTH, resizeState.startWidth + delta);
+        resizeState.currentWidth = width;
+        applyWidthToColumn(resizeState.columnKey, width);
+        event.preventDefault();
+    };
+
+    const stopColumnResize = () => {
+        if (!resizeState) return;
+        if (resizeState.headerCell) {
+            resizeState.headerCell.classList.remove("resizing");
+            resizeState.headerCell.style.cursor = "";
+        }
+        if (resizeState.currentWidth) {
+            columnWidths.set(resizeState.columnKey, resizeState.currentWidth);
+        }
+        document.removeEventListener("mousemove", onColumnResize);
+        document.removeEventListener("mouseup", stopColumnResize);
+        document.body.classList.remove("cursor-col-resize");
+        document.body.style.cursor = "";
+        document.body.style.userSelect = "";
+        resizeState = null;
+    };
+
+    const startColumnResize = (event, columnIndex, columnKey) => {
+        const headerRow = dom.resultsHead?.firstElementChild;
+        if (!headerRow) return;
+        const headerCell = headerRow.children[columnIndex];
+        if (!headerCell) return;
+
+        const measuredWidth =
+            headerCell.getBoundingClientRect().width || MIN_COLUMN_WIDTH;
+        const startWidth = columnWidths.get(columnKey) ?? measuredWidth;
+        resizeState = {
+            columnIndex,
+            columnKey,
+            startX: event.pageX,
+            startWidth,
+            currentWidth: startWidth,
+            headerCell,
+        };
+
+        headerCell.classList.add("resizing");
+        document.addEventListener("mousemove", onColumnResize);
+        document.addEventListener("mouseup", stopColumnResize);
+        document.body.classList.add("cursor-col-resize");
+        document.body.style.cursor = "col-resize";
+        document.body.style.userSelect = "none";
+        event.preventDefault();
+        event.stopPropagation();
+    };
+
+    const setupColumnResizing = () => {
+        const headerRow = dom.resultsHead?.firstElementChild;
+        if (!headerRow) return;
+
+        const presentKeys = new Set();
+
+        Array.from(headerRow.children).forEach((th, index) => {
+            const columnKey = th.dataset.columnKey || `col-${index}`;
+            presentKeys.add(columnKey);
+            th.classList.add("resizable-column", "pr-6");
+            if (!th.querySelector(".column-resize-handle")) {
+                const handle = document.createElement("span");
+                handle.className = "column-resize-handle";
+                handle.addEventListener("mousedown", (event) =>
+                    startColumnResize(event, index, columnKey),
+                );
+                handle.addEventListener("click", (event) => event.preventDefault());
+                th.appendChild(handle);
+            }
+
+            th.addEventListener("mousedown", (event) => {
+                if (event.button !== 0) return;
+                const rect = th.getBoundingClientRect();
+                const offsetX = event.clientX - rect.left;
+                if (rect.width - offsetX <= RESIZE_GRAB_AREA) {
+                    startColumnResize(event, index, columnKey);
+                }
+            });
+
+            th.addEventListener("mousemove", (event) => {
+                if (resizeState?.columnKey === columnKey) {
+                    th.style.cursor = "col-resize";
+                    return;
+                }
+                const rect = th.getBoundingClientRect();
+                const offsetX = event.clientX - rect.left;
+                if (rect.width - offsetX <= RESIZE_GRAB_AREA) {
+                    th.style.cursor = "col-resize";
+                } else if (!resizeState) {
+                    th.style.cursor = "";
+                }
+            });
+
+            th.addEventListener("mouseleave", () => {
+                if (!resizeState) {
+                    th.style.cursor = "";
+                }
+            });
+
+            if (!columnWidths.has(columnKey)) {
+                const measuredWidth =
+                    th.getBoundingClientRect().width || MIN_COLUMN_WIDTH;
+                columnWidths.set(columnKey, Math.max(MIN_COLUMN_WIDTH, measuredWidth));
+            }
+            applyWidthToColumn(columnKey, columnWidths.get(columnKey));
+        });
+
+        Array.from(columnWidths.keys()).forEach((key) => {
+            if (!presentKeys.has(key)) {
+                columnWidths.delete(key);
+            }
+        });
     };
 
     const refreshSaveButtonState = () => {
@@ -218,6 +517,12 @@
     const clearPreview = () => {
         selectedRowKey = null;
         selectedPage = 1;
+        activePreviewKey = null;
+        activePreviewPage = 1;
+        if (previewAbortController) {
+            previewAbortController.abort();
+            previewAbortController = null;
+        }
         if (activePreviewUrl) {
             URL.revokeObjectURL(activePreviewUrl);
             activePreviewUrl = null;
@@ -260,19 +565,6 @@
         dom.resultsBody.innerHTML = "";
         state.rowIndex.clear();
 
-        if (!normalizedRows.length) {
-            const emptyRow = document.createElement("tr");
-            emptyRow.className = "bg-white";
-            const cell = document.createElement("td");
-            cell.colSpan = state.schemaOrder.length + 6;
-            cell.textContent = "No results.";
-            cell.className = "px-4 py-3 text-sm text-slate-500";
-            emptyRow.appendChild(cell);
-            dom.resultsBody.appendChild(emptyRow);
-            refreshSaveButtonState();
-            return;
-        }
-
         if (!state.schemaOrder.length && normalizedRows[0]?.fields) {
             state.schemaOrder = Object.keys(normalizedRows[0].fields);
         }
@@ -284,38 +576,81 @@
             }
         }
 
+        const hiddenSchemaConfig = tableColumnConfig?.hiddenSchemaFields ?? [];
+        const hiddenSchemaArray = Array.isArray(hiddenSchemaConfig)
+            ? hiddenSchemaConfig
+            : typeof hiddenSchemaConfig === "string"
+            ? hiddenSchemaConfig.split(",")
+            : [];
+
+        const hiddenSchemaFields = new Set(
+            hiddenSchemaArray
+                .map((field) => String(field).trim())
+                .filter((field) => field.length > 0),
+        );
+        const visibleSchemaFields = state.schemaOrder.filter(
+            (field) => !hiddenSchemaFields.has(String(field).trim()),
+        );
+
+        const baseOverrides = tableColumnConfig?.baseColumns ?? {};
+        let visibleBaseColumns = BASE_COLUMNS.filter((column) =>
+            normalizeBoolean(baseOverrides[column.key], true),
+        );
+
+        if (!visibleBaseColumns.length && !visibleSchemaFields.length) {
+            visibleBaseColumns = BASE_COLUMNS.filter((column) => column.key === "index");
+        }
+
         const headerRow = document.createElement("tr");
-        const headers = [
-            "#",
-            "Original File",
-            "Page",
-            "File Name",
-            "Confidence",
-            "Warnings",
-            ...state.schemaOrder,
-        ];
-        headers.forEach((label) => {
+
+        visibleBaseColumns.forEach((column) => {
             const th = document.createElement("th");
-            th.textContent = label;
-            th.className = "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500";
+            th.textContent = column.label;
+            th.className = column.headerClassName;
+            th.dataset.columnKey = column.key;
             headerRow.appendChild(th);
         });
+
+        visibleSchemaFields.forEach((fieldName) => {
+            const th = document.createElement("th");
+            th.textContent = fieldName;
+            th.className = "px-4 py-3 text-xs font-semibold uppercase tracking-wide text-slate-500";
+            th.dataset.columnKey = `field:${fieldName}`;
+            headerRow.appendChild(th);
+        });
+
         dom.resultsHead.appendChild(headerRow);
+
+        const totalVisibleColumns = headerRow.children.length || 1;
+
+        if (!normalizedRows.length) {
+            const emptyRow = document.createElement("tr");
+            emptyRow.className = "bg-white";
+            const cell = document.createElement("td");
+            cell.colSpan = totalVisibleColumns;
+            cell.textContent = "No results.";
+            cell.className = "px-4 py-3 text-sm text-slate-500";
+            emptyRow.appendChild(cell);
+            dom.resultsBody.appendChild(emptyRow);
+            setupColumnResizing();
+            refreshSaveButtonState();
+            return;
+        }
 
         normalizedRows.forEach((row, index) => {
             const tr = document.createElement("tr");
             tr.dataset.fileKey = row.fileKey;
             tr.className = "bg-white transition hover:bg-[#B94828]/5 cursor-pointer";
-            tr.innerHTML = `
-                <td class="px-4 py-3 font-semibold text-slate-700">${index + 1}</td>
-                <td class="px-4 py-3 text-slate-700 break-words">${row.originalName || "—"}</td>
-                <td class="px-4 py-3 text-slate-700">${row.pageLabel || `Page ${row.pageNumber ?? 1}`}</td>
-                <td class="px-4 py-3 text-slate-700 break-words">${row.fileName}</td>
-                <td class="px-4 py-3 text-slate-700">${row.confidenceDisplay}</td>
-                <td class="px-4 py-3 text-slate-600">${row.warnings.length ? row.warnings.join(", ") : "—"}</td>
-            `;
 
-            state.schemaOrder.forEach((fieldName) => {
+            visibleBaseColumns.forEach((column) => {
+                const td = document.createElement("td");
+                td.className = column.cellClassName;
+                const value = column.render(row, index);
+                td.textContent = value !== undefined && value !== null ? String(value) : "";
+                tr.appendChild(td);
+            });
+
+            visibleSchemaFields.forEach((fieldName) => {
                 const td = document.createElement("td");
                 const value = row.fields[fieldName];
                 td.textContent = value !== undefined && value !== null ? String(value) : "";
@@ -333,11 +668,26 @@
             state.rowIndex.set(row.fileKey, row);
         });
 
+        setupColumnResizing();
         refreshSaveButtonState();
     };
 
-    const renderPreview = async (row, page = 1) => {
+    const renderPreview = async (row, page = 1, force = false) => {
         if (!row) return;
+        const sameContext =
+            activePreviewKey === row.fileKey && activePreviewPage === page;
+        if (sameContext && !force) {
+            return;
+        }
+
+        activePreviewKey = row.fileKey;
+        activePreviewPage = page;
+
+        if (previewAbortController) {
+            previewAbortController.abort();
+            previewAbortController = null;
+        }
+
         if (activePreviewUrl) {
             URL.revokeObjectURL(activePreviewUrl);
             activePreviewUrl = null;
@@ -346,13 +696,19 @@
         const descriptor = row.pageLabel
             ? `${row.fileName} · ${row.pageLabel}`
             : row.fileName;
-        dom.previewFooter.textContent = row.warnings.length
-            ? `Warnings: ${row.warnings.join(", ")}`
+        const warnings = Array.isArray(row.warnings) ? row.warnings : [];
+        dom.previewFooter.textContent = warnings.length
+            ? `Warnings: ${warnings.join(", ")}`
             : `File: ${descriptor}`;
 
         if (state.preview.available) {
+            const controller = new AbortController();
+            previewAbortController = controller;
             try {
-                const response = await fetch(`/api/preview/${row.fileKey}?page=${page}`);
+                const response = await fetch(
+                    `/api/preview/${row.fileKey}?page=${page}`,
+                    { signal: controller.signal },
+                );
                 if (!response.ok) {
                     throw new Error(await response.text());
                 }
@@ -365,10 +721,17 @@
                     dom.previewContent.firstElementChild.style.transformOrigin = "top center";
                 }
             } catch (error) {
+                if (error && typeof error === "object" && "name" in error && error.name === "AbortError") {
+                    return;
+                }
                 const message = error instanceof Error ? error.message : String(error);
                 dom.previewContent.innerHTML = `
                     <div class="text-center text-sm font-medium text-rose-600">Preview unavailable: ${message}</div>
                 `;
+            } finally {
+                if (previewAbortController === controller) {
+                    previewAbortController = null;
+                }
             }
         } else {
             dom.previewContent.innerHTML = `
@@ -391,24 +754,29 @@
             }
         }
 
-        const totalPages = row.totalPages ?? row.pageCount ?? 1;
-        const displayPage = row.pageCount > 1 ? page : row.pageNumber ?? page;
-        if (row.pageCount > 1 && state.preview.available) {
+        const pageCount = row.pageCount ?? row.totalPages ?? row.pages ?? 1;
+        const totalPages = pageCount || 1;
+        const displayPage = totalPages > 1 ? page : row.pageNumber ?? page;
+        if (totalPages > 1 && state.preview.available) {
             dom.previewControls.classList.remove("hidden");
-            dom.previewPageIndicator.textContent = `Page ${page} / ${totalPages}`;
+            const clampedPage = Math.min(page, totalPages);
+            dom.previewPageIndicator.textContent = `Page ${clampedPage} / ${totalPages}`;
         } else {
             dom.previewControls.classList.add("hidden");
             dom.previewPageIndicator.textContent = `Page ${displayPage} / ${totalPages}`;
         }
     };
 
-    const selectRow = (fileKey) => {
+    const selectRow = (fileKey, options = {}) => {
         const row = state.rowIndex.get(fileKey);
         if (!row) return;
 
-        const isNewSelection = selectedRowKey !== fileKey;
+        const wasSelected = selectedRowKey === fileKey;
         selectedRowKey = fileKey;
-        selectedPage = isNewSelection ? 1 : Math.min(selectedPage, row.pageCount) || 1;
+        const maxPages = row.pageCount || row.totalPages || row.pages || 1;
+        const nextPage = wasSelected ? Math.min(selectedPage, maxPages) || 1 : 1;
+        const pageChanged = nextPage !== selectedPage;
+        selectedPage = nextPage;
 
         dom.resultsBody.querySelectorAll("tr").forEach((tr) => {
             const isActive = tr.dataset.fileKey === fileKey;
@@ -421,7 +789,9 @@
             }
         });
 
-        renderPreview(row, selectedPage);
+        if (options.force || !wasSelected || pageChanged) {
+            renderPreview(row, selectedPage, options.force === true);
+        }
     };
 
     const processDocuments = async (event) => {
@@ -533,7 +903,7 @@
                     setBanner(dom.resultsStatus, "", "info");
 
                     if (latestRow) {
-                        selectRow(latestRow.fileKey);
+                        selectRow(latestRow.fileKey, { force: true });
                     }
 
                     if (fileIndex === 0 && pageIndex === 0) {
@@ -997,7 +1367,7 @@ const updateField = async (fieldName, updatedConfig) => {
                     setBanner(dom.resultsStatus, "", "info");
                 }
                 if (previousSelection && state.rowIndex.has(previousSelection)) {
-                    selectRow(previousSelection);
+                    selectRow(previousSelection, { force: true });
                 } else {
                     clearPreview();
                 }

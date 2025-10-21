@@ -51,6 +51,33 @@
         .brand-logo {
             filter: brightness(0) invert(1);
         }
+        .resizable-column {
+            position: relative;
+            user-select: none;
+        }
+        .column-resize-handle {
+            position: absolute;
+            top: 0;
+            right: 0;
+            width: 16px;
+            height: 100%;
+            cursor: col-resize;
+            display: flex;
+            align-items: center;
+            justify-content: flex-end;
+        }
+        .column-resize-handle::after {
+            content: "";
+            width: 2px;
+            height: 60%;
+            border-radius: 9999px;
+            background-color: rgba(15, 23, 42, 0.15);
+            transition: background-color 0.2s ease;
+        }
+        th.resizing .column-resize-handle::after,
+        .resizable-column:hover .column-resize-handle::after {
+            background-color: rgba(185, 72, 40, 0.6);
+        }
         #results-table thead th {
             position: sticky;
             top: 0;
