@@ -85,11 +85,6 @@ BHXH_SCHEMA = {
   "Số con sinh": {
     "type": "number",
     "description": "Number of children born in this delivery, usually after the phrase 'Số con trong lần sinh này'. Output only the numeric value (e.g., 1, 2). Correct OCR errors if the intended value is clear."
-  },
-
-  "Ngày sinh con": {
-    "type": "date",
-    "description": "Date of the child's birth, found after phrases like 'Đã sinh con vào lúc', followed by time and date. Ignore the time (hour, minute) and return the date in DD/MM/YYYY format. Correct OCR errors if the intended date is clear (e.g., '18 tháng 07 năm 2025' → '18/07/2025')."
   }
 }
 
