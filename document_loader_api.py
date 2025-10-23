@@ -1,11 +1,14 @@
 import os
 import httpx
 import asyncio
+from typing import List, Optional
 
-
-# API Configuration
-API_BASE_URL = "https://llm-ai.talentnet.vn/docling/v1"
-DEFAULT_TIMEOUT = 60.0
+from settings import (
+    DOC_API_BASE_URL,
+    DOC_API_TIMEOUT,
+    DEFAULT_OCR_ENGINE,
+    DEFAULT_OCR_LANGS,
+)
 
 # Default options for document conversion
 DEFAULT_CONVERSION_OPTIONS = {
@@ -17,8 +20,13 @@ DEFAULT_CONVERSION_OPTIONS = {
 }
 
 
-async def read_src(src: str, to_formats: list[str] = None, ocr_engine: str = "easyocr", 
-                   ocr_lang: list[str] = None, force_ocr: bool = False):
+async def read_src(
+    src: str,
+    to_formats: Optional[List[str]] = None,
+    ocr_engine: str = DEFAULT_OCR_ENGINE,
+    ocr_lang: Optional[List[str]] = None,
+    force_ocr: bool = False,
+):
     """
     Read and convert a document from a URL source.
     
@@ -35,9 +43,9 @@ async def read_src(src: str, to_formats: list[str] = None, ocr_engine: str = "ea
     if to_formats is None:
         to_formats = ["md", "json", "html", "text", "doctags"]
     if ocr_lang is None:
-        ocr_lang = ["en"]
+        ocr_lang = list(DEFAULT_OCR_LANGS)
     
-    url = f"{API_BASE_URL}/convert/source"
+    url = f"{DOC_API_BASE_URL}/convert/source"
     payload = {
         "options": {
             **DEFAULT_CONVERSION_OPTIONS,
@@ -50,14 +58,20 @@ async def read_src(src: str, to_formats: list[str] = None, ocr_engine: str = "ea
         "sources": [{"kind": "http", "url": src}]
     }
 
-    async with httpx.AsyncClient(timeout=DEFAULT_TIMEOUT) as client:
+    async with httpx.AsyncClient(timeout=DOC_API_TIMEOUT) as client:
         response = await client.post(url, json=payload)
         response.raise_for_status()
         return response.json()
 
 
-def read_file(file_path: str, to_formats: list[str] = ['doctags'], ocr_engine: str = "rapidocr",
-              ocr_lang: list[str] = ['english'], force_ocr: bool = True, pdf_backend: str = "pypdfium2"):
+def read_file(
+    file_path: str,
+    to_formats: Optional[List[str]] = None,
+    ocr_engine: str = DEFAULT_OCR_ENGINE,
+    ocr_lang: Optional[List[str]] = None,
+    force_ocr: bool = True,
+    pdf_backend: str = "pypdfium2",
+):
     """
     Read and convert a document from a local file.
     
@@ -76,7 +90,12 @@ def read_file(file_path: str, to_formats: list[str] = ['doctags'], ocr_engine: s
     if not os.path.exists(file_path):
         raise FileNotFoundError(f"File not found: {file_path}")
     
-    url = f"{API_BASE_URL}/convert/file"
+    if to_formats is None:
+        to_formats = ["doctags"]
+    if ocr_lang is None:
+        ocr_lang = list(DEFAULT_OCR_LANGS)
+
+    url = f"{DOC_API_BASE_URL}/convert/file"
     parameters = {
         **DEFAULT_CONVERSION_OPTIONS,
         "to_formats": to_formats,
@@ -88,14 +107,17 @@ def read_file(file_path: str, to_formats: list[str] = ['doctags'], ocr_engine: s
 
     filename = os.path.basename(file_path)
     
-    with httpx.Client(timeout=DEFAULT_TIMEOUT) as client:
-        with open(file_path, 'rb') as f:
-            files = {'files': (filename, f)}
+    with httpx.Client(timeout=DOC_API_TIMEOUT) as client:
+        with open(file_path, "rb") as f:
+            files = {"files": (filename, f)}
             response = client.post(url, files=files, data=parameters)
             response.raise_for_status()
-    
+
     data = response.json()
-    return data['document']['doctags_content']
+    try:
+        return data["document"]["doctags_content"]
+    except (KeyError, TypeError) as exc:
+        raise RuntimeError("Unexpected OCR API response structure.") from exc
 
 
 if __name__ == "__main__":

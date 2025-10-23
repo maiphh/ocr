@@ -9,28 +9,39 @@ import copy
 import json
 import subprocess
 import tempfile
-import tempfile
 from dataclasses import dataclass
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional, Set, Tuple
+from typing import Any, Callable, Dict, List, Optional, Set, Tuple
 from uuid import uuid4
 
 import pandas as pd
-from PyPDF2 import PdfReader, PdfWriter
+from PyPDF2 import PdfReader
 
 from config import BHXH_SCHEMA
 from pipeline import OCRParsingPipeline
+from settings import PREVIEW_MAX_ASSETS
+from .results import (
+    build_csv_rows,
+    build_table_rows,
+    calculate_summary,
+    build_dataframe,
+    build_meta_from_pipeline,
+)
+from .pdf_utils import ensure_unique_name, split_pdf_pages, store_pdf_in_cache, remove_cached
 
 # Optional PDF preview support
 PDF_PREVIEW_AVAILABLE = False
 PDF_PREVIEW_ERROR: Optional[str] = None
 convert_from_bytes = None
+convert_from_path = None
 
 try:
     from pdf2image import convert_from_bytes as _convert_from_bytes
+    from pdf2image import convert_from_path as _convert_from_path
 
     convert_from_bytes = _convert_from_bytes
+    convert_from_path = _convert_from_path
     try:
         subprocess.run(["pdftoppm", "-v"], capture_output=True, check=True)
         PDF_PREVIEW_AVAILABLE = True
@@ -44,38 +55,11 @@ except ImportError:
 
 @dataclass
 class PreviewAsset:
-    """Stored PDF bytes and metadata for preview/download."""
+    """Stored PDF cache path and metadata for preview/download."""
 
-    data: bytes
+    file_path: Path
     file_name: str
     page_count: int
-
-
-@dataclass
-class PendingJob:
-    """Pending split-processing job for multi-page PDFs."""
-
-    temp_dir: tempfile.TemporaryDirectory
-    pages: List[Path]
-    metadata: Dict[Path, Dict[str, Any]]
-    ocr_engine: str
-    langs: List[str]
-    split_notes: List[str]
-    schema_snapshot: Dict[str, Any]
-    pipeline: OCRParsingPipeline
-    index: int = 0
-    split_notes_recorded: bool = False
-
-    def has_next(self) -> bool:
-        return self.index < len(self.pages)
-
-    def next_page(self) -> Tuple[Path, Dict[str, Any]]:
-        path = self.pages[self.index]
-        self.index += 1
-        return path, self.metadata[path]
-
-    def cleanup(self) -> None:
-        self.temp_dir.cleanup()
 
 
 class AppState:
@@ -94,6 +78,12 @@ class AppState:
         self.results_payload: Optional[Dict[str, Any]] = None
         self.results_df: Optional[pd.DataFrame] = None
         self.preview_assets: Dict[str, PreviewAsset] = {}
+        # Map of session_id -> set of cached file Paths for cleanup
+        self.session_cache: Dict[str, Set[Path]] = {}
+        # Map of session_id -> set of file tokens (keys in preview_assets)
+        self.session_tokens: Dict[str, Set[str]] = {}
+        # Map of session_id -> pending split job identifiers
+        self.session_jobs: Dict[str, Set[str]] = {}
 
     def get_schema(self) -> Dict[str, Any]:
         return copy.deepcopy(self.custom_schema)
@@ -107,6 +97,209 @@ class AppState:
         self.custom_schema = copy.deepcopy(schema)
         self.pipeline.set_schema(self.custom_schema)
         return self.get_schema()
+
+    # --- Session cache tracking helpers ---
+    def register_session_assets(self, session_id: Optional[str], assets: Dict[str, "PreviewAsset"]) -> None:
+        if not session_id:
+            return
+        paths = self.session_cache.setdefault(session_id, set())
+        tokens = self.session_tokens.setdefault(session_id, set())
+        for token, asset in assets.items():
+            paths.add(asset.file_path)
+            tokens.add(token)
+
+    def register_session_asset(self, session_id: Optional[str], asset: "PreviewAsset", token: Optional[str] = None) -> None:
+        if not session_id or asset is None:
+            return
+        paths = self.session_cache.setdefault(session_id, set())
+        paths.add(asset.file_path)
+        if token is not None:
+            self.session_tokens.setdefault(session_id, set()).add(token)
+
+    def register_session_job(self, session_id: Optional[str], job_id: str) -> None:
+        if not session_id:
+            return
+        self.session_jobs.setdefault(session_id, set()).add(job_id)
+
+    def unregister_session_job(self, session_id: Optional[str], job_id: str) -> None:
+        if not session_id:
+            return
+        jobs = self.session_jobs.get(session_id)
+        if not jobs:
+            return
+        jobs.discard(job_id)
+        if not jobs:
+            self.session_jobs.pop(session_id, None)
+
+    def track_preview_asset(self, token: str, asset: "PreviewAsset", session_id: Optional[str] = None) -> None:
+        """Register a preview asset in global state and enforce cache limits."""
+        if not token or asset is None:
+            return
+
+        self.preview_assets[token] = asset
+        if session_id:
+            try:
+                self.register_session_asset(session_id, asset, token=token)
+            except Exception:
+                pass
+
+        max_assets = max(PREVIEW_MAX_ASSETS, 0)
+        if max_assets == 0:
+            removed = self.preview_assets.pop(token, None)
+            if removed is not None:
+                try:
+                    remove_cached(removed.file_path)
+                except Exception:
+                    pass
+            return
+
+        overflow = len(self.preview_assets) - max_assets
+        if overflow <= 0:
+            return
+
+        removed_entries: List[Tuple[str, Path]] = []
+        removal_order = list(self.preview_assets.keys())
+        for candidate_token in removal_order:
+            if overflow <= 0:
+                break
+            if candidate_token == token and overflow < len(removal_order):
+                continue
+            removed_asset = self.preview_assets.pop(candidate_token, None)
+            if removed_asset is None:
+                continue
+            removed_entries.append((candidate_token, removed_asset.file_path))
+            try:
+                remove_cached(removed_asset.file_path)
+            except Exception:
+                pass
+            overflow -= 1
+
+        if overflow > 0 and token in self.preview_assets:
+            removed_asset = self.preview_assets.pop(token, None)
+            if removed_asset is not None:
+                removed_entries.append((token, removed_asset.file_path))
+                try:
+                    remove_cached(removed_asset.file_path)
+                except Exception:
+                    pass
+
+        if not removed_entries:
+            return
+
+        removed_tokens = {tok for tok, _ in removed_entries}
+        removed_paths = {path for _, path in removed_entries}
+
+        for sid, tokens in list(self.session_tokens.items()):
+            tokens.difference_update(removed_tokens)
+            if not tokens:
+                self.session_tokens.pop(sid, None)
+
+        for sid, paths in list(self.session_cache.items()):
+            paths.difference_update(removed_paths)
+            if not paths:
+                self.session_cache.pop(sid, None)
+
+    def remove_preview_tokens(self, tokens: Set[str]) -> None:
+        if not tokens:
+            return
+
+        removed_paths: Set[Path] = set()
+
+        for token in list(tokens):
+            asset = self.preview_assets.pop(token, None)
+            if asset is None:
+                continue
+            removed_paths.add(asset.file_path)
+            try:
+                remove_cached(asset.file_path)
+            except Exception:
+                pass
+
+        if removed_paths:
+            for sid, paths in list(self.session_cache.items()):
+                paths.difference_update(removed_paths)
+                if not paths:
+                    self.session_cache.pop(sid, None)
+
+        for sid, session_tokens in list(self.session_tokens.items()):
+            session_tokens.difference_update(tokens)
+            if not session_tokens:
+                self.session_tokens.pop(sid, None)
+
+    def cleanup_session(self, session_id: Optional[str]) -> Dict[str, Any]:
+        """Remove cached files and pending jobs associated with a session."""
+        if not session_id:
+            return {
+                "sessionId": None,
+                "trackedPaths": 0,
+                "trackedTokens": 0,
+                "trackedJobs": 0,
+                "removedTokens": 0,
+                "removedFiles": 0,
+                "removedFilePaths": [],
+                "cancelledJobs": [],
+                "jobErrors": {},
+            }
+
+        paths = self.session_cache.pop(session_id, set())
+        tokens = self.session_tokens.pop(session_id, set())
+        job_ids = self.session_jobs.pop(session_id, set())
+
+        info: Dict[str, Any] = {
+            "sessionId": session_id,
+            "trackedPaths": len(paths),
+            "trackedTokens": len(tokens),
+            "trackedJobs": len(job_ids),
+            "removedTokens": 0,
+            "removedFiles": 0,
+            "removedFilePaths": [],
+            "cancelledJobs": [],
+            "jobErrors": {},
+        }
+
+        removed_files: Set[str] = set()
+        tokens_to_drop: List[str] = []
+
+        for token, asset in list(self.preview_assets.items()):
+            try:
+                if asset.file_path in paths or (tokens and token in tokens):
+                    tokens_to_drop.append(token)
+            except Exception:
+                pass
+
+        for token in tokens_to_drop:
+            asset = self.preview_assets.pop(token, None)
+            if asset is not None:
+                try:
+                    remove_cached(asset.file_path)
+                    removed_files.add(str(asset.file_path))
+                except Exception:
+                    pass
+
+        info["removedTokens"] = len(tokens_to_drop)
+
+        for p in paths:
+            try:
+                remove_cached(p)
+                removed_files.add(str(p))
+            except Exception:
+                pass
+
+        if job_ids:
+            try:
+                from .jobs import cancel_pending_jobs
+
+                result = cancel_pending_jobs(job_ids)
+                info["cancelledJobs"] = result.get("cancelled", [])
+                info["jobErrors"] = result.get("errors", {})
+                removed_files.update(result.get("removedPaths", []))
+            except Exception as exc:
+                info["jobErrors"] = {job_id: str(exc) for job_id in job_ids}
+
+        info["removedFiles"] = len(removed_files)
+        info["removedFilePaths"] = sorted(removed_files)
+
+        return info
 
     def add_field(self, payload: Dict[str, Any]) -> Dict[str, Any]:
         name = payload["name"]
@@ -139,54 +332,6 @@ class AppState:
 
 
 state = AppState()
-pending_jobs: Dict[str, PendingJob] = {}
-
-
-def split_pdf_pages(pdf_path: Path, output_dir: Path) -> List[Path]:
-    """
-    Split a multi-page PDF into individual single-page PDFs.
-
-    Returns existing file when only one page is detected.
-    """
-    reader = PdfReader(str(pdf_path))
-    num_pages = len(reader.pages)
-
-    if num_pages <= 1:
-        return [pdf_path]
-
-    output_paths: List[Path] = []
-    base_name = pdf_path.stem
-
-    for page_num in range(num_pages):
-        writer = PdfWriter()
-        writer.add_page(reader.pages[page_num])
-
-        output_path = output_dir / f"{base_name}_page_{page_num + 1}.pdf"
-        with open(output_path, "wb") as output_file:
-            writer.write(output_file)
-        output_paths.append(output_path)
-
-    return output_paths
-
-
-def ensure_unique_name(existing: set[str], original_name: str, index: int) -> str:
-    """
-    Generate a filesystem-safe, unique filename by appending an index when needed.
-    """
-    base_name = Path(original_name or f"upload_{index}.pdf").name
-    if not base_name.lower().endswith(".pdf"):
-        base_name += ".pdf"
-
-    candidate = base_name
-    counter = 1
-    while candidate in existing:
-        stem = Path(base_name).stem
-        suffix = Path(base_name).suffix
-        candidate = f"{stem}_{counter}{suffix}"
-        counter += 1
-
-    existing.add(candidate)
-    return candidate
 
 
 def parse_languages(raw: str) -> List[str]:
@@ -194,84 +339,14 @@ def parse_languages(raw: str) -> List[str]:
     return langs or ["en", "vi"]
 
 
-def build_csv_rows(
-    documents: List[Dict[str, Any]],
-    schema_fields: List[str],
-) -> List[Dict[str, Any]]:
-    rows: List[Dict[str, Any]] = []
-    for doc in documents:
-        csv_row: Dict[str, Any] = {
-            "file_path": doc["file_path"],
-            "confidence": doc["confidence"],
-            "warnings": "; ".join(doc.get("warnings", [])) if doc.get("warnings") else "",
-        }
-        extracted = doc.get("extracted", {})
-        for field in schema_fields:
-            csv_row[field] = extracted.get(field, "")
-        rows.append(csv_row)
-    return rows
-
-
-def build_table_rows(
-    documents: List[Dict[str, Any]],
-    preview_assets: Optional[Dict[str, PreviewAsset]] = None,
-) -> List[Dict[str, Any]]:
-    """
-    Construct table rows for the frontend based on processed documents.
-    """
-    rows: List[Dict[str, Any]] = []
-
-    for doc in documents:
-        token = doc.get("file_token")
-        page_count = doc.get("page_count")
-        if page_count is None and preview_assets and token in preview_assets:
-            page_count = preview_assets[token].page_count
-        if page_count is None:
-            page_count = 1
-
-        page_number = doc.get("page_number", 1)
-        total_pages = doc.get("total_pages", page_count)
-        original_name = doc.get("original_file_name") or Path(doc.get("file_path", "")).name
-
-        rows.append(
-            {
-                "fileKey": token,
-                "fileName": doc.get("file_name") or original_name,
-                "filePath": doc.get("file_path"),
-                "confidence": doc.get("confidence", 0.0),
-                "confidenceDisplay": f"{doc.get('confidence', 0.0) * 100:.1f}%",
-                "warnings": doc.get("warnings", []),
-                "fields": doc.get("extracted", {}),
-                "pageCount": page_count,
-                "originalName": original_name,
-                "pageNumber": page_number,
-                "totalPages": total_pages,
-                "pageLabel": f"Page {page_number}/{total_pages}",
-            }
-        )
-
-    return rows
-
-
-def calculate_summary(documents: List[Dict[str, Any]]) -> Dict[str, Any]:
-    total = len(documents)
-    avg_confidence = (
-        sum(doc.get("confidence", 0.0) for doc in documents) / total if total else 0.0
-    )
-    warnings_count = sum(1 for doc in documents if doc.get("warnings"))
-    return {
-        "totalFiles": total,
-        "averageConfidence": avg_confidence,
-        "warningsCount": warnings_count,
-    }
 
 
 def generate_preview_asset(pdf_path: Path) -> PreviewAsset:
-    pdf_bytes = pdf_path.read_bytes()
-    reader = PdfReader(BytesIO(pdf_bytes))
+    cached_path = store_pdf_in_cache(pdf_path)
+    reader = PdfReader(str(cached_path))
     page_count = len(reader.pages)
     return PreviewAsset(
-        data=pdf_bytes,
+        file_path=cached_path,
         file_name=pdf_path.name,
         page_count=page_count,
     )
@@ -316,6 +391,8 @@ def run_processing(
     uploaded_files: List[Dict[str, Any]],
     ocr_engine: str,
     ocr_languages: List[str],
+    session_id: Optional[str] = None,
+    progress_callback: Optional[Callable[[str, PreviewAsset], None]] = None,
 ) -> Dict[str, Any]:
     """
     Run the OCR parsing pipeline synchronously (invoked inside a threadpool).
@@ -377,6 +454,16 @@ def run_processing(
             token = uuid4().hex
             preview_asset = generate_preview_asset(pdf_path)
             preview_assets[token] = preview_asset
+            if progress_callback is not None:
+                try:
+                    progress_callback(token, preview_asset)
+                except Exception:
+                    pass
+            elif session_id:
+                try:
+                    state.register_session_asset(session_id, preview_asset, token=token)
+                except Exception:
+                    pass
 
             meta = page_metadata.get(
                 pdf_path,
@@ -395,22 +482,11 @@ def run_processing(
             )
             documents.append(document_result)
 
-    csv_rows = build_csv_rows(documents, schema_fields)
-    dataframe = pd.DataFrame(csv_rows, dtype="string") if csv_rows else pd.DataFrame(
-        columns=["file_path", "confidence", "warnings", *schema_fields]
-    )
+    dataframe = build_dataframe(documents, schema_fields)
 
     results_payload = {
         "documents": documents,
-        "meta": {
-            "total_files": len(documents),
-            "language": state.pipeline.language_pref or "auto-detect",
-            "schema_version": state.pipeline.schema_version,
-            "parsing_strategy": "few-shot",
-            "split_notes": split_notes,
-            "ocr_engine": state.pipeline.ocr_engine,
-            "ocr_languages": state.pipeline.langs,
-        },
+        "meta": build_meta_from_pipeline(state.pipeline, len(documents), split_notes),
     }
 
     table_rows = build_table_rows(documents, preview_assets)
@@ -425,231 +501,7 @@ def run_processing(
     }
 
 
-def create_split_job(
-    file_name: str,
-    data: bytes,
-    ocr_engine: str,
-    langs: List[str],
-) -> Dict[str, Any]:
-    temp_dir = tempfile.TemporaryDirectory()
-    temp_path = Path(temp_dir.name)
-
-    safe_name = ensure_unique_name(set(), file_name, 1)
-    pdf_path = temp_path / safe_name
-    pdf_path.write_bytes(data)
-
-    split_dir = temp_path / "split"
-    split_dir.mkdir(exist_ok=True)
-
-    pages: List[Path] = []
-    metadata: Dict[Path, Dict[str, Any]] = {}
-    split_notes: List[str] = []
-
-    try:
-        split_files = split_pdf_pages(pdf_path, split_dir)
-        if len(split_files) > 1:
-            split_notes.append(
-                f"Split '{pdf_path.name}' into {len(split_files)} page PDFs."
-            )
-        total_pages = len(split_files)
-        for idx, page_path in enumerate(split_files, start=1):
-            pages.append(page_path)
-            metadata[page_path] = {
-                "original_name": pdf_path.name,
-                "page_number": idx,
-                "total_pages": total_pages,
-            }
-    except Exception as exc:
-        split_notes.append(
-            f"Failed to split '{pdf_path.name}': {exc}. Processed as-is."
-        )
-        pages.append(pdf_path)
-        metadata[pdf_path] = {
-            "original_name": pdf_path.name,
-            "page_number": 1,
-            "total_pages": 1,
-        }
-
-    schema_snapshot = state.get_schema()
-    job_pipeline = OCRParsingPipeline(
-        schema=copy.deepcopy(schema_snapshot),
-        ocr_engine=ocr_engine,
-        langs=langs,
-        language_pref=state.pipeline.language_pref,
-        schema_version=state.pipeline.schema_version,
-    )
-
-    job_id = uuid4().hex
-    pending_jobs[job_id] = PendingJob(
-        temp_dir=temp_dir,
-        pages=pages,
-        metadata=metadata,
-        ocr_engine=ocr_engine,
-        langs=langs,
-        split_notes=split_notes,
-        schema_snapshot=schema_snapshot,
-        pipeline=job_pipeline,
-    )
-
-    return {
-        "job_id": job_id,
-        "total_pages": len(pages),
-        "split_notes": split_notes,
-    }
-
-
-def prepare_job_page(job_id: str, append: bool) -> Dict[str, Any]:
-    job = pending_jobs.get(job_id)
-    if job is None:
-        raise KeyError("Job not found or already completed.")
-
-    if not job.has_next():
-        job.cleanup()
-        pending_jobs.pop(job_id, None)
-        return {"done": True}
-
-    pdf_path, meta = job.next_page()
-
-    return {
-        "job_id": job_id,
-        "append": append,
-        "pdf_path": pdf_path,
-        "meta": meta,
-        "schema_snapshot": job.schema_snapshot,
-        "pipeline": job.pipeline,
-    }
-
-
-def execute_job_page(prepared: Dict[str, Any]) -> Dict[str, Any]:
-    pdf_path: Path = prepared["pdf_path"]
-    meta: Dict[str, Any] = prepared["meta"]
-    pipeline: OCRParsingPipeline = prepared["pipeline"]
-    schema_fields_set = set(prepared["schema_snapshot"].keys())
-
-    token = uuid4().hex
-    preview_asset = generate_preview_asset(pdf_path)
-    document_result = parse_document_path(
-        pdf_path,
-        token,
-        meta,
-        schema_fields_set,
-        preview_asset,
-        pipeline=pipeline,
-    )
-
-    return {
-        "token": token,
-        "document": document_result,
-        "preview_asset": preview_asset,
-        "meta": meta,
-    }
-
-
-def finalize_job_page(prepared: Dict[str, Any], execution: Dict[str, Any]) -> Dict[str, Any]:
-    job_id = prepared["job_id"]
-    append = prepared["append"]
-    token = execution["token"]
-    document_result = execution["document"]
-    preview_asset = execution["preview_asset"]
-    meta = execution["meta"]
-
-    job = pending_jobs.get(job_id)
-    if job is None:
-        raise KeyError("Job not found or already completed.")
-
-    if not append:
-        state.preview_assets = {}
-        existing_documents: List[Dict[str, Any]] = []
-        existing_split_notes: List[str] = []
-    else:
-        if state.results_payload is not None:
-            existing_documents = list(
-                state.results_payload.get("documents", [])
-            )
-            existing_split_notes = list(
-                state.results_payload.get("meta", {}).get("split_notes", [])
-            )
-        else:
-            existing_documents = []
-            existing_split_notes = []
-
-    # Replace any prior entry for the same token before appending the updated result
-    combined_documents = [
-        doc for doc in existing_documents if doc.get("file_token") != token
-    ]
-    combined_documents.append(document_result)
-
-    if not append:
-        split_notes = list(job.split_notes)
-        if job.split_notes:
-            job.split_notes_recorded = True
-        else:
-            split_notes = []
-    else:
-        split_notes = list(existing_split_notes)
-        if job.split_notes and not job.split_notes_recorded:
-            split_notes.extend(job.split_notes)
-            job.split_notes_recorded = True
-
-    state.preview_assets[token] = preview_asset
-
-    schema_fields = list(state.custom_schema.keys())
-    csv_rows = build_csv_rows(combined_documents, schema_fields)
-    if csv_rows:
-        state.results_df = pd.DataFrame(csv_rows, dtype="string")
-    else:
-        state.results_df = pd.DataFrame(
-            columns=["file_path", "confidence", "warnings", *schema_fields]
-        )
-
-    pipeline = job.pipeline
-    combined_meta = {
-        "total_files": len(combined_documents),
-        "language": pipeline.language_pref or "auto-detect",
-        "schema_version": pipeline.schema_version,
-        "parsing_strategy": "few-shot",
-        "split_notes": split_notes,
-        "ocr_engine": pipeline.ocr_engine,
-        "ocr_languages": pipeline.langs,
-    }
-
-    state.results_payload = {
-        "documents": combined_documents,
-        "meta": combined_meta,
-    }
-
-    table_rows = build_table_rows(combined_documents, state.preview_assets)
-    summary = calculate_summary(combined_documents)
-
-    done = not job.has_next()
-    if done:
-        job.cleanup()
-        pending_jobs.pop(job_id, None)
-
-    latest_row = next(
-        (row for row in table_rows if row.get("fileKey") == token),
-        table_rows[-1] if table_rows else None,
-    )
-
-    return {
-        "done": done,
-        "summary": summary,
-        "table": table_rows,
-        "meta": combined_meta,
-        "pdfPreview": {
-            "available": PDF_PREVIEW_AVAILABLE,
-            "error": PDF_PREVIEW_ERROR,
-        },
-        "latestRow": latest_row,
-        "pageLabel": document_result.get("page_label")
-        or f"Page {meta.get('page_number', 1)}/{meta.get('total_pages', 1)}",
-        "pageNumber": meta.get("page_number", 1),
-        "totalPages": meta.get("total_pages", 1),
-    }
-
-
 def rollback_job_page(prepared: Dict[str, Any]) -> None:
-    job = pending_jobs.get(prepared["job_id"])
-    if job is None:
-        return
-    job.index = max(job.index - 1, 0)
+    # kept for API compatibility; actual rollback lives in jobs module
+    from .jobs import rollback_job_page as _rollback
+    _rollback(prepared)

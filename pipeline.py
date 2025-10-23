@@ -15,6 +15,7 @@ from datetime import datetime
 from document_loader_api import read_file
 from parser_api import chat_with_model
 import csv
+# from mistral_ocr import read_file_mistral
 
 class OCRParsingPipeline:
     """
@@ -384,6 +385,8 @@ class OCRParsingPipeline:
                 ocr_lang=ocr_lang,
                 force_ocr=True
             )
+
+            # doctags_text = read_file_mistral(file_path)
             
             if not doctags_text or len(doctags_text.strip()) == 0:
                 warnings.append("OCR_EMPTY_OR_FAILED")

@@ -8,12 +8,13 @@ import asyncio
 import json
 from io import BytesIO
 from pathlib import Path
-from typing import Any, Dict, List, Optional
+from typing import Any, Dict, List, Optional, Set
 
 import pandas as pd
-from fastapi import APIRouter, File, Form, HTTPException, UploadFile
-from fastapi.responses import JSONResponse, Response, StreamingResponse
+from fastapi import APIRouter, File, Form, HTTPException, UploadFile, Request, Query
+from fastapi.responses import JSONResponse, Response, StreamingResponse, FileResponse
 from pydantic import BaseModel, ConfigDict, Field, field_validator
+from pdf2image import convert_from_path
 
 from .state import (
     PDF_PREVIEW_AVAILABLE,
@@ -21,16 +22,25 @@ from .state import (
     convert_from_bytes,
     run_processing,
     state,
-    build_table_rows,
-    calculate_summary,
     parse_languages,
-    build_csv_rows,
+    PreviewAsset,
+)
+from .jobs import (
     create_split_job,
     prepare_job_page,
     execute_job_page,
     finalize_job_page,
     rollback_job_page,
 )
+from .results import (
+    build_table_rows,
+    calculate_summary,
+    build_csv_rows,
+    build_dataframe,
+    build_meta_from_pipeline,
+)
+from settings import PREVIEW_MAX_ASSETS
+from .pdf_utils import CACHE_DIR
 
 api_router = APIRouter()
 
@@ -89,8 +99,13 @@ class ResultsUpdatePayload(BaseModel):
 
 
 class SplitNextPayload(BaseModel):
+    model_config = ConfigDict(extra="ignore")
     job_id: str = Field(..., alias="jobId")
     append: bool = Field(False)
+
+
+class SessionEndPayload(BaseModel):
+    session_id: str = Field(..., alias="sessionId")
 
 
 @api_router.get("/schema")
@@ -140,6 +155,7 @@ async def process_documents(
     append: bool = Form(False),
     ocr_engine: str = Form("easyocr"),
     ocr_languages: str = Form("en,vi"),
+    session_id: Optional[str] = Form(None, alias="sessionId"),
     files: List[UploadFile] = File(...),
 ) -> JSONResponse:
     if not files:
@@ -165,13 +181,26 @@ async def process_documents(
 
     async with state.lock:
         loop = asyncio.get_running_loop()
+        progress_tokens: Set[str] = set()
+
+        def handle_preview_asset(token: str, asset: PreviewAsset) -> None:
+            progress_tokens.add(token)
+
+            def _apply() -> None:
+                try:
+                    state.track_preview_asset(token, asset, session_id=session_id)
+                except Exception:
+                    pass
+
+            loop.call_soon_threadsafe(_apply)
 
         if not append or state.results_payload is None:
             existing_documents: List[Dict[str, Any]] = []
             existing_split_notes: List[str] = []
             state.results_payload = None
             state.results_df = None
-            state.preview_assets = {}
+            # cleanup old cached preview files
+            state.remove_preview_tokens(set(state.preview_assets.keys()))
         else:
             existing_documents = list(state.results_payload.get("documents", []))
             existing_split_notes = list(
@@ -185,8 +214,20 @@ async def process_documents(
                 uploaded_payload,
                 ocr_engine,
                 langs,
+                session_id,
+                handle_preview_asset,
             )
         except Exception as exc:
+            if progress_tokens:
+                tokens_snapshot = set(progress_tokens)
+
+                def _rollback_tokens() -> None:
+                    try:
+                        state.remove_preview_tokens(tokens_snapshot)
+                    except Exception:
+                        pass
+
+                loop.call_soon_threadsafe(_rollback_tokens)
             raise HTTPException(status_code=500, detail=str(exc)) from exc
 
         new_documents = processing_result["results_payload"]["documents"]
@@ -197,7 +238,9 @@ async def process_documents(
         combined_documents = existing_documents + new_documents
         combined_split_notes = existing_split_notes + new_split_notes
 
-        state.preview_assets.update(processing_result["preview_assets"])
+        for token, asset in processing_result["preview_assets"].items():
+            if token not in state.preview_assets:
+                state.track_preview_asset(token, asset, session_id=session_id)
 
         if state.results_df is not None and append and not state.results_df.empty:
             combined_df = pd.concat(
@@ -207,15 +250,9 @@ async def process_documents(
             combined_df = processing_result["dataframe"]
         state.results_df = combined_df
 
-        combined_meta = {
-            "total_files": len(combined_documents),
-            "language": state.pipeline.language_pref or "auto-detect",
-            "schema_version": state.pipeline.schema_version,
-            "parsing_strategy": "few-shot",
-            "split_notes": combined_split_notes,
-            "ocr_engine": state.pipeline.ocr_engine,
-            "ocr_languages": state.pipeline.langs,
-        }
+        combined_meta = build_meta_from_pipeline(
+            state.pipeline, len(combined_documents), combined_split_notes
+        )
 
         table_rows = build_table_rows(combined_documents, state.preview_assets)
         summary = calculate_summary(combined_documents)
@@ -242,6 +279,7 @@ async def process_split_init(
     ocr_engine: str = Form("easyocr"),
     ocr_languages: str = Form("en,vi"),
     file: UploadFile = File(...),
+    session_id: Optional[str] = Form(None, alias="sessionId"),
 ) -> JSONResponse:
     filename = file.filename or "document.pdf"
     data = await file.read()
@@ -251,7 +289,7 @@ async def process_split_init(
     langs = parse_languages(ocr_languages)
 
     async with state.lock:
-        job_info = create_split_job(filename, data, ocr_engine, langs)
+        job_info = create_split_job(filename, data, ocr_engine, langs, session_id=session_id)
 
     return JSONResponse({
         "jobId": job_info["job_id"],
@@ -287,6 +325,153 @@ async def process_split_next(payload: SplitNextPayload) -> JSONResponse:
             raise HTTPException(status_code=404, detail=str(exc)) from exc
 
     return JSONResponse(result)
+
+
+@api_router.post("/session/end")
+async def end_session(
+    request: Request,
+    session_id_q: Optional[str] = Query(None, alias="sessionId"),
+    session_id_q_alt: Optional[str] = Query(None, alias="sessionID"),
+    payload: Optional[SessionEndPayload] = None,
+) -> JSONResponse:
+    # Be robust to different content types and delivery methods
+    session_id: Optional[str] = session_id_q or session_id_q_alt
+    if session_id is None and payload is not None:
+        session_id = payload.session_id
+    if session_id is None:
+        # Try to parse JSON body manually
+        try:
+            body = await request.body()
+            if body:
+                try:
+                    parsed = json.loads(body.decode("utf-8"))
+                    session_id = (
+                        parsed.get("sessionId")
+                        or parsed.get("sessionID")
+                        or parsed.get("session_id")
+                    )
+                except Exception:
+                    pass
+        except Exception:
+            pass
+    if session_id is None:
+        # Try form data
+        try:
+            form = await request.form()
+            if form:
+                session_id = form.get("sessionId") or form.get("sessionID") or form.get("session_id")
+        except Exception:
+            pass
+
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing sessionId")
+
+    async with state.lock:
+        try:
+            cleanup_info = state.cleanup_session(session_id)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return JSONResponse({"cleaned": cleanup_info.get("removedFiles", 0), **cleanup_info})
+
+
+@api_router.get("/session/end")
+async def end_session_get(
+    session_id: Optional[str] = Query(None, alias="sessionId"),
+    session_id_alt: Optional[str] = Query(None, alias="sessionID"),
+) -> JSONResponse:
+    session_id = session_id or session_id_alt
+    if not session_id:
+        raise HTTPException(status_code=400, detail="Missing sessionId")
+    async with state.lock:
+        try:
+            cleanup_info = state.cleanup_session(session_id)
+        except Exception as exc:
+            raise HTTPException(status_code=500, detail=str(exc)) from exc
+    return JSONResponse({"cleaned": cleanup_info.get("removedFiles", 0), **cleanup_info})
+
+
+# --- Debug/inspection endpoints for cache/session state ---
+
+@api_router.get("/debug/cache")
+async def debug_cache() -> JSONResponse:
+    try:
+        cache_dir = Path(CACHE_DIR)
+        files = []
+        total_bytes = 0
+        if cache_dir.exists():
+            for p in cache_dir.glob("**/*"):
+                if p.is_file():
+                    try:
+                        st = p.stat()
+                        total_bytes += st.st_size
+                        files.append({
+                            "name": p.name,
+                            "path": str(p),
+                            "size": st.st_size,
+                            "mtime": st.st_mtime,
+                        })
+                    except Exception:
+                        pass
+        async with state.lock:
+            preview_assets = {
+                token: {
+                    "file": str(asset.file_path),
+                    "name": asset.file_name,
+                    "pages": asset.page_count,
+                }
+                for token, asset in state.preview_assets.items()
+            }
+        payload = {
+            "cacheDir": str(cache_dir),
+            "fileCount": len(files),
+            "totalBytes": total_bytes,
+            "files": files,
+            "previewAssets": preview_assets,
+        }
+        return JSONResponse(payload)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=str(exc)) from exc
+
+
+@api_router.get("/debug/session/{session_id}")
+async def debug_session(session_id: str) -> JSONResponse:
+    async with state.lock:
+        paths = [str(p) for p in state.session_cache.get(session_id, set())]
+        tokens = list(state.session_tokens.get(session_id, set()))
+        jobs = list(state.session_jobs.get(session_id, set()))
+    return JSONResponse({
+        "sessionId": session_id,
+        "trackedCount": len(paths),
+        "tokens": tokens,
+        "jobs": jobs,
+        "paths": paths,
+    })
+
+
+@api_router.get("/debug/sessions")
+async def debug_sessions() -> JSONResponse:
+    async with state.lock:
+        sessions = {
+            sid: {
+                "paths": [str(p) for p in paths],
+                "tokens": list(state.session_tokens.get(sid, set())),
+                "jobs": list(state.session_jobs.get(sid, set())),
+            }
+            for sid, paths in state.session_cache.items()
+        }
+        preview_assets = {
+            token: {
+                "file": str(asset.file_path),
+                "name": asset.file_name,
+                "pages": asset.page_count,
+            }
+            for token, asset in state.preview_assets.items()
+        }
+    return JSONResponse({
+        "sessions": sessions,
+        "previewAssets": preview_assets,
+        "previewAssetCount": len(preview_assets),
+    })
 
 
 @api_router.get("/results/excel")
@@ -375,14 +560,7 @@ async def update_results(payload: ResultsUpdatePayload) -> JSONResponse:
             document["total_pages"] = row.total_pages
 
         schema_fields = list(state.custom_schema.keys())
-        csv_rows = build_csv_rows(documents, schema_fields)
-        if csv_rows:
-            dataframe = pd.DataFrame(csv_rows, dtype="string")
-        else:
-            dataframe = pd.DataFrame(
-                columns=["file_path", "confidence", "warnings", *schema_fields]
-            )
-        state.results_df = dataframe
+        state.results_df = build_dataframe(documents, schema_fields)
 
         table_rows = build_table_rows(documents, state.preview_assets)
 
@@ -398,14 +576,17 @@ async def preview_page(file_key: str, page: int = 1) -> Response:
     if page < 1 or page > asset.page_count:
         raise HTTPException(status_code=400, detail="Requested page out of range.")
 
-    if PDF_PREVIEW_AVAILABLE and convert_from_bytes is not None:
+    if PDF_PREVIEW_AVAILABLE:
         try:
-            images = convert_from_bytes(
-                asset.data,
-                first_page=page,
-                last_page=page,
-                dpi=150,
-            )
+            images = None
+            if 'convert_from_path' in globals() and convert_from_path is not None:
+                images = convert_from_path(
+                    str(asset.file_path), first_page=page, last_page=page, dpi=150
+                )
+            elif convert_from_bytes is not None:
+                with open(asset.file_path, 'rb') as fh:
+                    data = fh.read()
+                images = convert_from_bytes(data, first_page=page, last_page=page, dpi=150)
             if not images:
                 raise RuntimeError("Unable to render PDF page.")
             buffer = BytesIO()
@@ -425,7 +606,7 @@ async def preview_page(file_key: str, page: int = 1) -> Response:
         "Content-Disposition": f'inline; filename="{asset.file_name}"',
         "Cache-Control": "no-store",
     }
-    return Response(content=asset.data, media_type="application/pdf", headers=headers)
+    return FileResponse(path=str(asset.file_path), media_type="application/pdf", headers=headers)
 
 
 @api_router.get("/preview/{file_key}/pdf")
@@ -437,4 +618,4 @@ async def preview_pdf(file_key: str) -> Response:
         "Content-Disposition": f'inline; filename="{asset.file_name}"',
         "Cache-Control": "no-store",
     }
-    return Response(content=asset.data, media_type="application/pdf", headers=headers)
+    return FileResponse(path=str(asset.file_path), media_type="application/pdf", headers=headers)

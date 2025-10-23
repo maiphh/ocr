@@ -1,4 +1,40 @@
 (() => {
+    // Ensure a stable session ID and expose globally for debugging
+    const GEN_ID = () => (typeof crypto !== 'undefined' && crypto.randomUUID)
+        ? crypto.randomUUID()
+        : String(Date.now()) + Math.random().toString(16).slice(2);
+    const SESSION_ID = (typeof window !== 'undefined' && window.__OCR_SESSION_ID)
+        ? window.__OCR_SESSION_ID
+        : GEN_ID();
+    if (typeof window !== 'undefined') {
+        window.__OCR_SESSION_ID = SESSION_ID; // for debugging/inspection
+    }
+
+    // Inform backend to cleanup cached files when this tab unloads (reload/close)
+    if (typeof window !== 'undefined') {
+        const sendCleanup = () => {
+            const payload = { sessionId: SESSION_ID };
+            try {
+                if (navigator && typeof navigator.sendBeacon === 'function') {
+                    const data = JSON.stringify(payload);
+                    const blob = new Blob([data], { type: 'application/json' });
+                    const ok = navigator.sendBeacon(`/api/session/end?sessionID=${encodeURIComponent(SESSION_ID)}` , blob);
+                    if (ok) return; // delivered
+                }
+            } catch (_) { /* fall through to fetch */ }
+            // Fallback using keepalive fetch
+            try {
+                fetch(`/api/session/end?sessionID=${encodeURIComponent(SESSION_ID)}` , {
+                    method: 'POST',
+                    keepalive: true,
+                    headers: { 'Content-Type': 'application/json' },
+                    body: JSON.stringify(payload),
+                });
+            } catch (_) { /* swallow */ }
+        };
+        window.addEventListener('beforeunload', sendCleanup);
+        window.addEventListener('pagehide', sendCleanup);
+    }
     const state = {
         schema: {},
         schemaOrder: [],
@@ -831,6 +867,7 @@
             initForm.append("file", file, file.name);
             initForm.append("ocr_engine", ocrEngineValue);
             initForm.append("ocr_languages", ocrLanguagesValue);
+            initForm.append("sessionId", SESSION_ID);
 
             setBanner(
                 dom.processStatus,
@@ -874,6 +911,7 @@
                 const nextPayload = {
                     jobId,
                     append: appendExisting || pageIndex > 0,
+                    sessionId: SESSION_ID,
                 };
 
                 try {

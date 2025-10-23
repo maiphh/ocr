@@ -94,6 +94,39 @@
             padding: calc(0.75rem * var(--table-scale)) calc(1rem * var(--table-scale));
         }
     </style>
+    <script>
+        (function () {
+            try {
+                if (!window.__OCR_SESSION_ID) {
+                    var gen = (window.crypto && window.crypto.randomUUID)
+                        ? window.crypto.randomUUID()
+                        : String(Date.now()) + Math.random().toString(16).slice(2);
+                    window.__OCR_SESSION_ID = gen;
+                }
+                function cleanup() {
+                    var id = window.__OCR_SESSION_ID;
+                    if (!id) return;
+                    var payload = JSON.stringify({ sessionId: id });
+                    try {
+                        if (navigator && typeof navigator.sendBeacon === 'function') {
+                            var blob = new Blob([payload], { type: 'application/json' });
+                            navigator.sendBeacon('/api/session/end?sessionID=' + encodeURIComponent(id), blob);
+                            return;
+                        }
+                    } catch (e) { }
+                    try {
+                        fetch('/api/session/end?sessionID=' + encodeURIComponent(id), {
+                            method: 'POST', keepalive: true,
+                            headers: { 'Content-Type': 'application/json' },
+                            body: payload,
+                        });
+                    } catch (e) { }
+                }
+                window.addEventListener('beforeunload', cleanup);
+                window.addEventListener('pagehide', cleanup);
+            } catch (e) { }
+        })();
+    </script>
     <script defer src="/static/js/app.js"></script>
 </head>
 <body class="bg-slate-50 text-slate-900 font-body">
